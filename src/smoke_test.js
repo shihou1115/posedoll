@@ -1,0 +1,123 @@
+// 動作確認（Playwright + Chromium）。使い方: node src/smoke_test.js
+// posedoll.html をオフラインで開き、主要機能を自動で確かめて結果を JSON で表示する。
+// フォルダ保存はブラウザ内の仮想フォルダ（OPFS）で代用して確認する。
+const { chromium } = require('playwright');
+const http = require('http'), fs = require('fs'), path = require('path');
+const HTML = path.resolve(__dirname, '..', 'posedoll.html');
+
+(async () => {
+  const srv = http.createServer((q, r) => { r.setHeader('content-type', 'text/html; charset=utf-8'); r.end(fs.readFileSync(HTML)); }).listen(0);
+  const url = `http://127.0.0.1:${srv.address().port}/`;
+  const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+  const ctx = await b.newContext({ viewport: { width: 1300, height: 850 } });
+  await ctx.route(u => !u.href.startsWith(url) && !/^(data|blob):/.test(u.href), r => r.abort());   // 外部通信なし
+  await ctx.addInitScript(() => { window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle('t', { create: true }); });
+  const p = await ctx.newPage(); const errs = [];
+  p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  await p.goto(url); await p.waitForTimeout(2000);
+  const res = await p.evaluate(async () => {
+    const P = window.__pose, T = P.THREE, f = P.active(), out = {};
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    // IK: 腕と脚が目標に届くか
+    P.applyPreset('直立');
+    const sh = f.J.shoulderL.getWorldPosition(new T.Vector3()), tgt = sh.clone().add(new T.Vector3(0.15, 0.1, 0.35));
+    P.solveLimb(f, 'wristL', tgt, null); f.group.updateMatrixWorld(true);
+    out.ikArmErr = f.J.wristL.getWorldPosition(new T.Vector3()).distanceTo(tgt) < 1e-6;
+    // ひじ・ひざの IK（v1.4）: ひじは引いた方向へ向き（手は元の位置へ近づくよう曲がる）、ひざは足首を動かさずに向きが変わる
+    { const w = n => f.J[n].getWorldPosition(new T.Vector3());
+      P.applyPreset('直立'); f.group.updateMatrixWorld(true);
+      const sp = w('shoulderL'), e0 = w('elbowL'), w0 = w('wristL'), tg = e0.clone().add(new T.Vector3(0, 0.1, 0.25));
+      for (let i = 1; i <= 10; i++) { P.solveElbow(f, 'elbowL', e0.clone().lerp(tg, i / 10), w0); f.group.updateMatrixWorld(true); }
+      const ang = w('elbowL').sub(sp).angleTo(tg.clone().sub(sp)) * 180 / Math.PI;
+      P.applyPreset('座る'); f.group.updateMatrixWorld(true);
+      const a0 = w('ankleL'), k0 = w('kneeL'); P.solvePole(f, 'kneeL', k0.clone().add(new T.Vector3(0.2, 0, 0)), f.J.ankleL.getWorldQuaternion(new T.Quaternion())); f.group.updateMatrixWorld(true);
+      out.ikElbow = ang < 2; out.ikKnee = w('ankleL').distanceTo(a0) < 1e-4 && w('kneeL').x - k0.x > 0.1; }
+    // 左右反転を2回で元に戻るか
+    const p0 = f.getPose(), p2 = P.mirrorPose(P.mirrorPose(p0));
+    out.mirror = JSON.stringify(p0.rot) === JSON.stringify(Object.fromEntries(Object.keys(p0.rot).map(k => [k, p2.rot[k]])));
+    // プリセットが可動域の範囲内か
+    out.presets = {};
+    for (const n of ['直立', '歩く', '走る', '座る', 'しゃがむ', '手を振る', 'ジャンプ']) {
+      P.setLimits(false); P.applyPreset(n); const a = JSON.stringify(f.getPose().rot);
+      P.setLimits(true); for (const j in f.J) P.clampJoint(f, j); out.presets[n] = a === JSON.stringify(f.getPose().rot);
+    }
+    // 書き出し3種
+    out.render = ['doll', 'openpose', 'depth', 'normal', 'lineart'].map(k => { const c = P.renderImage(k); return `${k}:${c.width}x${c.height}`; });
+    // 保存庫: 保存 → 一覧 → 削除
+    document.getElementById('libName').value = 'テスト'; document.getElementById('libSave').click(); await wait(1500);
+    out.libSaved = document.querySelectorAll('.lib-item').length;
+    { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('t'); let j = null;
+      for await (const [n, h] of d.entries()) if (n.endsWith('.json')) j = JSON.parse(await (await h.getFile()).text());
+      out.libHasCam = !!(j && j.cam && j.cam.rel === 'hips' && j.cam.pos.length === 3); }
+    const del = [...document.querySelectorAll('.lib-item button')].find(x => x.textContent === '削除'); del.click(); del.click(); await wait(800);
+    out.libAfterDelete = document.querySelectorAll('.lib-item').length;
+    out.zip = !!window.JSZip;
+    // 複数アングル: 向き×種類＋シーンが ZIP に入り、画面の視点は変わらない。背面では左右が入れ替わる
+    { P.applyPreset('直立'); P.setView('q'); const cBefore = JSON.stringify(P.getCam());
+      const { z } = await P.batchZip(['front', 'back'], ['openpose', 'keypoints']);
+      const names = Object.keys(z.files), kp = async v => JSON.parse(await z.file(names.find(n => n.includes(`_${v}_keypoints`))).async('string')).people[0].pose_keypoints_2d;
+      const fr = await kp('front'), bk = await kp('back');
+      out.batch = names.length === 5 && JSON.stringify(P.getCam()) === cBefore && fr[2*3] < fr[5*3] && bk[2*3] > bk[5*3];
+      out.batchButton = document.getElementById('saveBatch').textContent; }
+    // 言葉でポーズ（v1.5）: コードブロック・コメント・末尾カンマ入りの返事を読み、右側は鏡写し、手の形と浮かせも効く。壊れた返事は反映しない
+    { P.applyPreset('直立'); P.setLimits(true);
+      const r = P.applyLLM('はい:\n```json\n{"posedoll":"pose","name":"t","pose":{"right_shoulder":{"side":160,"front":10},"elbowR":{"bend":40}, // c\n "head":{"tilt":-8},"kneeL":{"bend":999},},"hands":{"R":"fist"},"lift":0.2}\n```');
+      const rot = f.getPose().rot, minY = (() => { f.group.updateMatrixWorld(true); return f.J.ankleL.getWorldPosition(new T.Vector3()).y; })();
+      const bad = P.applyLLM('ポーズは作れませんでした');
+      out.llmPose = r.ok && r.clamped === 1 && JSON.stringify(rot.shoulderR) === '[-10,0,-160]' && rot.elbowR[0] === -40 && rot.head[2] === 8 && rot.kneeL[0] === 155
+        && rot.fR_index2[2] > 90 && minY > 0.2 && !bad.ok && P.llmPrompt().includes('shoulderL'); }
+    // ショートカット: Tab で関節送り、矢印で 1°/5°、R/G、数字キーで視点
+    { const key = (key, o = {}) => document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...o }));
+      P.applyPreset('直立'); P.select(null); document.activeElement.blur && document.activeElement.blur();
+      key('Tab'); const s1 = P.getSel()?.name; key('Tab'); const s2 = P.getSel()?.name; key('Tab', { shiftKey: true }); const s3 = P.getSel()?.name;
+      P.select({ kind: 'joint', fig: f, name: 'neck' }); const x0 = f.J.neck.rotation.x;
+      key('ArrowUp'); key('ArrowUp', { shiftKey: true }); const dx = Math.round((f.J.neck.rotation.x - x0) * 180 / Math.PI);
+      const z0 = f.J.neck.rotation.z; key('ArrowLeft'); const dz = Math.round((f.J.neck.rotation.z - z0) * 180 / Math.PI);
+      const y0 = f.J.neck.rotation.y; key('ArrowRight', { ctrlKey: true }); const dy = Math.round((f.J.neck.rotation.y - y0) * 180 / Math.PI);
+      P.select({ kind: 'joint', fig: f, name: 'hips' }); key('g'); const mv = document.getElementById('modeMove').classList.contains('on'); key('r');
+      const rt = document.getElementById('modeRot').classList.contains('on');
+      const c0 = JSON.stringify(P.getCam().pos); key('3'); const c1 = JSON.stringify(P.getCam().pos); key('1');
+      out.shortcuts = s1 === 'hips' && s2 === 'spine' && s3 === 'hips' && dx === 6 && dz === -1 && dy === 1 && mv && rt && c0 !== c1;
+      P.select(null); await wait(500); }
+    // OpenPose JSON: 18点×3 / 手21点×3、枠内の座標になっているか
+    { P.applyPreset('直立'); P.setView('front'); const j = P.openposeJSON(), pp = j.people[0], b = pp.pose_keypoints_2d;
+      const inside = [1, 2, 5, 8, 11].every(i => b[i*3+2] === 1 && b[i*3] > 0 && b[i*3] < j.canvas_width && b[i*3+1] > 0 && b[i*3+1] < j.canvas_height);
+      out.keypoints = j.people.length === P.figures().length && b.length === 54 && pp.hand_left_keypoints_2d.length === 63 && pp.hand_right_keypoints_2d.length === 63 && inside
+        && b[2*3] < b[5*3];   // 正面から見ると本人の右肩(2)は画面の左側
+      const c = P.renderImage('openpose'), px = c.getContext('2d').getImageData(Math.round(b[3]), Math.round(b[4]), 1, 1).data;
+      out.keypointsOnImage = px[0] + px[1] + px[2] > 100;   // 首の点の位置に絵が描かれている
+      // 法線: 胸の正面はカメラ向き（青が強い）。線画: 黒地に白い線が少しある
+      const nc = P.renderImage('normal').getContext('2d').getImageData(Math.round(b[3]), Math.round(b[4]) + 40, 1, 1).data;
+      out.normalFacing = nc[2] > 200 && Math.abs(nc[0] - 128) < 60;
+      const ld = P.renderImage('lineart').getContext('2d').getImageData(0, 0, j.canvas_width, j.canvas_height).data;
+      let white = 0; for (let i = 0; i < ld.length; i += 4) if (ld[i] > 127) white++;
+      out.lineartRatio = Math.round(white / (ld.length / 4) * 1000) / 1000;   // 0.005〜0.1 くらいが正常
+    }
+    // 人体の見た目（v1.3）: 既定は人体。肌は体＋左右の手の3つ。部品は見えないがクリック判定に使う。深度は姿勢どおりに描かれる
+    { await wait(300); const sk = f.skin;
+      out.look = P.getLook() === 'human' && !!sk && sk.meshes.length === 3 && sk.meshes.every(m => m.visible) && f.meshes.every(m => !m.visible);
+      P.applyPreset('直立'); P.setView('front'); await wait(300);
+      const ray = new T.Raycaster(), v = f.J.chest.getWorldPosition(new T.Vector3()).add(new T.Vector3(0, 0.1, 0)).project(P.camera());
+      ray.setFromCamera(new T.Vector2(v.x, v.y), P.camera()); const hit = ray.intersectObjects(f.meshes, false)[0];
+      out.pickSkin = hit?.object.userData.joint === 'chest';   // 見えない部品でもクリック判定に当たる
+      P.applyPreset('Tポーズ'); const j = P.openposeJSON(), b = j.people[0].pose_keypoints_2d;
+      const ex = Math.round((b[6*3] + b[7*3]) / 2), ey = Math.round((b[6*3+1] + b[7*3+1]) / 2);   // 左ひじと左手首の中間（T ポーズの前腕）
+      out.depthPosed = P.renderImage('depth').getContext('2d').getImageData(ex, ey, 1, 1).data[0] > 30;
+      f.setBody({ ...f.body, thick: 1.3 }); P.renderImage('depth'); out.skinRebuild = f.skin.key === JSON.stringify(f.body) && !f.skin.coarse;
+      f.setBody({ ...f.body, thick: 1 });
+      P.setLook('doll'); out.lookDoll = f.meshes.every(m => m.visible) && f.skin.meshes.every(m => !m.visible) && P.renderImage('depth').width > 0;
+      P.setLook('human'); P.applyPreset('直立'); }
+    // カメラ: シーン JSON に入り、読み戻すと同じ視点・画角・サイズになるか
+    const cam0 = { pos: [1.2, 1.6, 3.1], target: [0.1, 0.95, 0], fov: 40, size: [1024, 1024] };
+    P.setCam(cam0); const sf = JSON.parse(JSON.stringify(P.sceneFile()));
+    P.setCam({ pos: [0, 1, 5], target: [0, 1, 0], fov: 30, size: [832, 1216] });
+    P.setCam(sf.cam); const c1 = P.getCam();
+    out.camRoundtrip = JSON.stringify(c1) === JSON.stringify(cam0);
+    out.camRender = (c => `${c.width}x${c.height}`)(P.renderImage('openpose'));
+    out.camNotInUndo = !('cam' in P.getScene());
+    P.setCam({ size: [832, 1216] });
+    return out;
+  });
+  console.log(JSON.stringify({ ...res, errors: errs }, null, 1));
+  await b.close(); srv.close();
+})();
