@@ -27,6 +27,9 @@ body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14
 .ref{position:absolute;z-index:0;pointer-events:none;object-fit:contain}
 .frame{position:absolute;z-index:2;pointer-events:none;border:1.5px dashed var(--accent);box-shadow:0 0 0 9999px color-mix(in srgb,var(--stage) 55%,transparent)}
 .frame span{position:absolute;left:6px;top:4px;font:500 11px var(--f-mono);color:var(--accent);background:var(--stage);padding:1px 5px;border-radius:3px}
+.frame.side{border-color:var(--danger)}
+.frame.side span::after{content:'　真横に近い';color:var(--danger)}
+.warnbox{font-size:12px;line-height:1.6;margin:0;color:var(--danger);border:1px solid var(--danger);border-radius:6px;padding:6px 8px}
 .views{position:absolute;z-index:3;top:calc(10px + env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));display:flex;flex-wrap:wrap;gap:4px;max-width:calc(100% - 150px)}
 .tools{position:absolute;z-index:3;top:calc(10px + env(safe-area-inset-top,0px));right:10px;display:flex;gap:4px}
 .chip-sel{position:absolute;z-index:3;bottom:10px;right:max(10px,env(safe-area-inset-right,0px));font-weight:700;background:var(--accent);color:#fff;padding:4px 10px;border-radius:999px;font-size:13px;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -113,7 +116,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   <aside class="panel">
     <header class="phead">
       <div class="titlerow">
-        <h1>デッサン人形ポーザー <span style="font:500 11px var(--f-mono);color:var(--muted)">v1.5</span></h1>
+        <h1>デッサン人形ポーザー <span style="font:500 11px var(--f-mono);color:var(--muted)">v1.6</span></h1>
         <div class="row"><button id="undo" title="Ctrl+Z">元に戻す</button><button id="redo" title="Ctrl+Y">やり直す</button></div>
       </div>
       <div class="figrow">
@@ -281,9 +284,25 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <section>
           <h2>OpenPose プレビュー</h2>
           <canvas id="opPreview" class="preview" width="160" height="234" aria-label="OpenPose プレビュー"></canvas>
+          <p class="warnbox" id="opWarn" role="status" hidden></p>
           <label class="check"><input type="checkbox" id="opHands" checked>手指の骨格も描く</label>
+          <label class="check"><input type="checkbox" id="opFace">顔の点を描く（DWPose の白い点 68 個）</label>
+          <div class="row"><label for="opFeet" style="font-size:13px">足先</label>
+            <select id="opFeet" aria-label="足先の点" style="flex:1">
+              <option value="none" selected>描かない（標準）</option>
+              <option value="body25">3点（つま先・小指側・かかと／BODY_25 式）</option>
+              <option value="toe">1点（つま先／Wan Animate 式）</option>
+            </select></div>
           <label class="check"><input type="checkbox" id="incProps" checked>小道具と床を人形画像・深度・法線・線画に含める</label>
           <label class="check"><input type="checkbox" id="transparent">人形画像の背景を透明にする</label>
+        </section>
+        <section>
+          <h2>枠の中の配置</h2>
+          <div class="slider"><label for="plX">左右</label><input type="range" id="plX" min="-50" max="50" step="1" value="0"><output id="oPlX">0%</output></div>
+          <div class="slider"><label for="plY">上下</label><input type="range" id="plY" min="-50" max="50" step="1" value="0"><output id="oPlY">0%</output></div>
+          <div class="slider"><label for="plS">大きさ</label><input type="range" id="plS" min="40" max="250" step="1" value="100"><output id="oPlS">100%</output></div>
+          <button id="plReset">元に戻す</button>
+          <p class="note">書き出し枠の中で人形をずらしたり、大きさを変えたりします（遠近感は変わりません）。画面の表示と、すべての書き出し・一括書き出しに効きます。視点と一緒にシーン JSON に保存されます。</p>
         </section>
         <section>
           <h2>画像の保存先</h2>
@@ -304,7 +323,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
           <button class="primary" id="saveZip">まとめて保存（ZIP）</button>
           <div class="row"><button id="saveJson">シーンをJSONで保存</button><button id="loadJson">シーンを読み込む</button><input type="file" id="fileIn" accept=".json,application/json" hidden></div>
           <label class="check"><input type="checkbox" id="loadCam" checked>シーンを読み込むとき視点・画角・出力サイズも戻す</label>
-          <p class="note">OpenPose 画像は ComfyUI の Load Image から ControlNet Apply に直接つなぎます（DWPose は不要）。手指まで効かせたい場合は、手に対応した OpenPose ControlNet を使ってください。法線は ControlNet normal、線画は lineart / canny 系に使えます（線画は黒地に白い線なので、プリプロセッサは「なし」でつなぎます）。キーポイントは OpenPose 画像と同じ点の座標（ピクセル単位）で、POSE_KEYPOINT を扱うノードや後処理に使えます。</p>
+          <p class="note">OpenPose 画像は ComfyUI の Load Image から ControlNet Apply に直接つなぎます（DWPose は不要）。手指まで効かせたい場合は、手に対応した OpenPose ControlNet を使ってください。法線は ControlNet normal、線画は lineart / canny 系に使えます（線画は黒地に白い線なので、プリプロセッサは「なし」でつなぎます）。キーポイントは OpenPose 画像と同じ点の座標（ピクセル単位）で、POSE_KEYPOINT を扱うノードや後処理に使えます。顔の点は face_keypoints_2d、足先は foot_keypoints_2d（左の親指側・小指側・かかと、右の同じ順）に入ります。足先の描き方は comfyui_controlnet_aux の DWPose には無く（足の点は描かれない）、効くかは ControlNet / LLLite 側の学習次第です。</p>
         </section>
         <section>
           <h2>複数アングル一括</h2>

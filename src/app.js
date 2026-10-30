@@ -183,7 +183,7 @@ class Figure{
     this.matWood=new THREE.MeshStandardMaterial({color:col,roughness:.62});
     this.matJoint=new THREE.MeshStandardMaterial({color:col.clone().multiplyScalar(.8),roughness:.55});
     this.matSkin=skinMaterial(col);
-    this.J={}; this.jf={}; this.parts=[]; this.meshes=[]; this.marks={}; this.body={...BODY_DEF}; this.handles=null; this.fdef={}; this.skin=null;
+    this.J={}; this.jf={}; this.parts=[]; this.meshes=[]; this.marks={}; this.footMesh={}; this.body={...BODY_DEF}; this.handles=null; this.fdef={}; this.skin=null;
     this.build(); this.applyBody(); this.showLook();
   }
   joint(name,parent,pos,f){
@@ -211,7 +211,7 @@ class Figure{
     this.ell('spine','spine',[0,0.08,0],[0.12,0.10,0.085],F.torsoY,F.belly);
     this.ell('chest','chest',[0,0.11,0.005],[0.165,0.15,0.105],F.torsoY,F.chest);
     this.cap('neck','neck',0.042,0.07,[0,0.045,0],F.torsoY,F.neck);
-    this.ell('head',this.headGroup,[0,0.11,0.005],[0.088,0.112,0.098]);
+    this.headMesh=this.ell('head',this.headGroup,[0,0.11,0.005],[0.088,0.112,0.098]);
     this.ell('head',this.headGroup,[0,0.085,0.097],[0.016,0.022,0.016]);
     const hg=this.headGroup;
     this.mark('nose',hg,[0,0.085,0.11]); this.mark('eyeL',hg,[0.034,0.125,0.083]); this.mark('eyeR',hg,[-0.034,0.125,0.083]);
@@ -228,7 +228,7 @@ class Figure{
       this.ball('elbow'+s,0.038);   this.cap('elbow'+s,'elbow'+s,0.036,0.17,[0,-0.125,0],F.armY,F.armSeg);
       this.ball('hip'+s,0.065);     this.cap('hip'+s,'hip'+s,0.068,0.28,[0,-0.21,0],F.legY,F.legSeg);
       this.ball('knee'+s,0.05);     this.cap('knee'+s,'knee'+s,0.05,0.32,[0,-0.21,0],F.legY,F.legSeg);
-      this.ball('ankle'+s,0.04);    this.ell('ankle'+s,'ankle'+s,[0,-0.035,0.055],[0.048,0.032,0.115],F.one,F.foot);
+      this.ball('ankle'+s,0.04);    this.footMesh[s]=this.ell('ankle'+s,'ankle'+s,[0,-0.035,0.055],[0.048,0.032,0.115],F.one,F.foot);
       this.buildHand(s,sx);
     }
   }
@@ -357,12 +357,43 @@ class Figure{
     vis[17]=out.dot(toCam(pts[17]))>-0.25;
     return {pts,vis};
   }
+  // feet as COCO-WholeBody / DWPose orders them: big toe, small toe, heel (left first). Points sit on the sole of the doll's foot (unit-sphere coords of its ellipsoid)
+  kpFoot(){
+    const pts=[];
+    for(const s of ['L','R']){ const sx=s==='L'?1:-1, m=this.footMesh[s];
+      for(const p of [[-0.42*sx,-0.55,0.86],[0.6*sx,-0.55,0.62],[0,-0.5,-0.86]]) pts.push(m.localToWorld(new THREE.Vector3(...p))); }
+    return pts;
+  }
+  // 68 face points in the iBUG-300W order DWPose uses, placed on the head (headGroup space, unscaled). Hidden when facing away from the camera
+  kpFace(cam){
+    this.group.updateMatrixWorld(true);
+    const hg=this.headGroup, c=hg.localToWorld(new THREE.Vector3(0,0.09,0)), cp=wpos(cam);
+    const pts=FACE_TPL.map(p=>hg.localToWorld(new THREE.Vector3(...p)));
+    const vis=pts.map(p=>p.clone().sub(c).normalize().dot(cp.clone().sub(p).normalize())>-0.08);
+    return {pts,vis};
+  }
   kpHand(s){
     const pts=[wpos(this.J['wrist'+s])];
     for(const f of FINGERS){ for(let k=1;k<=3;k++) pts.push(wpos(this.J[fj(s,f,k)])); pts.push(wpos(this.marks[`${s}_${f}_tip`])); }
     return pts;
   }
 }
+
+// face template for kpFace (headGroup space; +X = person's left, so iBUG point 0 starts on the person's right)
+const FACE_TPL=(()=>{
+  const sz=(x,y)=>0.005+0.098*Math.sqrt(Math.max(0,1-(x/0.088)**2-((y-0.11)/0.112)**2)), on=(x,y,k=1,dz=0)=>[x,y,sz(x,y)*k+dz], P=[];
+  for(let i=0;i<=16;i++){ const t=Math.PI*i/16; P.push([-0.079*Math.cos(t),0.112-0.1*Math.sin(t)**0.7,0.015+0.068*Math.sin(t)]); }   // jaw 0-16
+  for(const sx of [-1,1]) for(let i=0;i<5;i++){ const u=sx<0?i:4-i; P.push(on(sx*(0.062-0.0115*u),0.141+0.007*Math.sin(Math.PI*u/4))); }   // brows 17-26
+  [[0.128,0],[0.114,.004],[0.1,.008],[0.086,.013]].forEach(([y,dz])=>P.push(on(0,y,1,dz)));                    // nose bridge 27-30
+  [-0.016,-0.008,0,0.008,0.016].forEach((x,i)=>P.push(on(x,i===2?0.075:0.077,1,i===2?0.009:0.005)));           // nostrils 31-35
+  for(const sx of [-1,1]){ const e=[[-0.047,0],[-0.039,.005],[-0.029,.005],[-0.021,0],[-0.029,-.004],[-0.039,-.004]];   // eyes 36-47 (outer corner first on the right eye)
+    const pts=e.map(([x,dy])=>[-x,dy]); const ord=sx<0?pts.map(([x,dy])=>[-x,dy]):[3,2,1,0,5,4].map(j=>pts[j]);
+    ord.forEach(([x,dy])=>P.push(on(x,0.125+dy,0.97))); }
+  [[-.022,.052],[-.014,.056],[-.005,.058],[0,.057],[.005,.058],[.014,.056],[.022,.052],[.014,.047],[.005,.044],[0,.044],[-.005,.044],[-.014,.047]]
+    .forEach(([x,y])=>P.push(on(x,y,1,0.004)));                                                                  // outer lip 48-59
+  [[-.018,.052],[-.006,.053],[0,.053],[.006,.053],[.018,.052],[.006,.05],[0,.05],[-.006,.05]].forEach(([x,y])=>P.push(on(x,y,1,0.003)));   // inner lip 60-67
+  return P;
+})();
 
 // hands
 const HAND_PRESETS={'開く':[0,0,0,0,0,15],'リラックス':[.25,.2,.28,.35,.42,6],'グー':[.9,1,1,1,1,0],'ピース':[.75,0,0,1,1,16],
@@ -803,7 +834,7 @@ let camSaveT; orbit.addEventListener('change',()=>{ dirty=true; clearTimeout(cam
 // camera state (kept out of undo; saved in scene files, library items and localStorage 'posedoll:cam')
 function getCam(){
   const r=v=>Math.round(v*1000)/1000;
-  return {pos:camera.position.toArray().map(r),target:orbit.target.toArray().map(r),fov:Math.round(camera.fov),size:outSize()};
+  return {pos:camera.position.toArray().map(r),target:orbit.target.toArray().map(r),fov:Math.round(camera.fov),size:outSize(),place:[place.x,place.y,place.s]};
 }
 function setCam(c,withSize=true){
   if(!c||typeof c!=='object') return false;
@@ -815,6 +846,8 @@ function setCam(c,withSize=true){
     else { $('sizeSel').value='custom'; $('customRow').hidden=false; $('cw').value=W; $('ch').value=H; }
     layoutFrame();
   }
+  if(Array.isArray(c.place)&&c.place.length===3&&c.place.every(Number.isFinite)) setPlace(...c.place);
+  else if(withSize) setPlace(0,0,1);   // scene files from before v1.6 have no placement
   if(ok(c.target)) orbit.target.fromArray(c.target);
   if(ok(c.pos)) camera.position.fromArray(c.pos);
   camera.lookAt(orbit.target); orbit.update(); dirty=true; saveCamLocal(); return true;
@@ -838,32 +871,70 @@ function layoutFrame(){
   for(const el of [$('frame'),refImg]) Object.assign(el.style,{left:r.x+'px',top:r.y+'px',width:r.w+'px',height:r.h+'px'});
   $('frameLabel').textContent=W+'×'+H;
   const pc=$('opPreview'), pw=Math.round(Math.min(240,300*W/H)); pc.width=pw; pc.height=Math.round(pw*H/W); dirty=true;
+  applyPlace();
 }
 $('sizeSel').addEventListener('change',()=>{ $('customRow').hidden=$('sizeSel').value!=='custom'; layoutFrame(); saveCamLocal(); });
 ['cw','ch'].forEach(id=>$(id).addEventListener('input',()=>{ layoutFrame(); saveCamLocal(); }));
-function exportCam(src=camera){ const r=frameRect(), c=src.clone(); c.aspect=vw/vh; c.setViewOffset(vw,vh,r.x,r.y,r.w,r.h); c.updateProjectionMatrix(); c.updateMatrixWorld(); return c; }
+function exportCam(src=camera){ const r=frameRect(), o=placeOffset(r), c=src.clone(); c.aspect=vw/vh; c.setViewOffset(vw*place.s,vh*place.s,o.x+r.x,o.y+r.y,r.w,r.h); c.updateProjectionMatrix(); c.updateMatrixWorld(); return c; }
+
+// placement inside the export frame (v1.6): a lens shift / zoom about the frame centre, applied to the screen camera too so the frame
+// shows what is exported. x, y = fraction of the frame (right / up are +), s = size. Saved with the camera (cam.place)
+const place={x:0,y:0,s:1};
+function placeOffset(r=frameRect()){ const cx=r.x+r.w/2, cy=r.y+r.h/2, s=place.s; return {x:cx*s-cx-place.x*r.w,y:cy*s-cy+place.y*r.h}; }
+function applyPlace(){
+  if(!place.x&&!place.y&&place.s===1) camera.clearViewOffset();
+  else { const o=placeOffset(); camera.setViewOffset(vw*place.s,vh*place.s,o.x,o.y,vw,vh); }
+  camera.updateProjectionMatrix(); dirty=true;
+}
+function setPlace(x,y,s){
+  place.x=clamp(Math.round(x*100)/100,-0.5,0.5); place.y=clamp(Math.round(y*100)/100,-0.5,0.5); place.s=clamp(Math.round(s*100)/100,0.4,2.5);
+  $('plX').value=Math.round(place.x*100); $('plY').value=Math.round(place.y*100); $('plS').value=Math.round(place.s*100);
+  $('oPlX').textContent=Math.round(place.x*100)+'%'; $('oPlY').textContent=Math.round(place.y*100)+'%'; $('oPlS').textContent=Math.round(place.s*100)+'%';
+  applyPlace();
+}
+['plX','plY','plS'].forEach(id=>$(id).addEventListener('input',()=>{ setPlace($('plX').value/100,$('plY').value/100,$('plS').value/100); clearTimeout(camSaveT); camSaveT=setTimeout(saveCamLocal,400); }));
+$('plReset').onclick=()=>{ setPlace(0,0,1); saveCamLocal(); };
 
 // OpenPose drawing (as controlnet_aux draws it)
 const LIMBS=[[1,2],[1,5],[2,3],[3,4],[5,6],[6,7],[1,8],[8,9],[9,10],[1,11],[11,12],[12,13],[1,0],[0,14],[14,16],[0,15],[15,17]];
 const COLORS=[[255,0,0],[255,85,0],[255,170,0],[255,255,0],[170,255,0],[85,255,0],[0,255,0],[0,255,85],[0,255,170],[0,255,255],[0,170,255],[0,85,255],[0,0,255],[85,0,255],[170,0,255],[255,0,255],[255,0,170],[255,0,85]];
 const HAND_EDGES=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
 function hsv(h){ const i=Math.floor(h*6)%6, f=h*6-Math.floor(h*6), q=1-f, t=f; const c=[[1,t,0],[q,1,0],[0,1,t],[0,q,1],[t,0,1],[1,0,q]][i]; return c.map(x=>Math.round(x*255)); }
-function drawOpenPose(ctx,W,H,cam,hands){
+// feet: 'body25' = 3 points per foot drawn like OpenPose BODY_25 (left blue, right cyan); 'toe' = 1 point per foot like Wan Animate's pose drawing
+const FOOT_STYLE={body25:{edges:[[13,18],[18,19],[13,20],[10,21],[21,22],[10,23]],cols:[[0,0,255],[0,0,255],[0,0,255],[0,255,255],[0,255,255],[0,255,255]]},
+  toe:{edges:[[13,18],[10,19]],cols:[[200,200,0],[100,100,0]]}};
+const opOpts=()=>({hands:$('opHands').checked,feet:$('opFeet').value,face:$('opFace').checked});
+function footPts(f,feet){   // extra body points appended after the 18 COCO points (index 18-)
+  const p=f.kpFoot(); if(feet==='body25') return p;
+  return [0,3].map(i=>p[i].clone().add(p[i+1]).multiplyScalar(.5));   // toe = middle of big and small toe (as Wan Animate does)
+}
+function drawOpenPose(ctx,W,H,cam,o){
   ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
   const proj=p=>{ const v=p.clone().project(cam); return v.z>1?null:[(v.x+1)/2*W,(1-v.y)/2*H]; };
   const stick=Math.max(2,Math.round(Math.min(W,H)/200));
+  const bone=(p,q,col)=>{
+    const [x1,y1]=p,[x2,y2]=q, len=Math.hypot(x2-x1,y2-y1);
+    ctx.save(); ctx.globalAlpha=0.6; ctx.fillStyle=`rgb(${col})`;
+    ctx.translate((x1+x2)/2,(y1+y2)/2); ctx.rotate(Math.atan2(y2-y1,x2-x1));
+    ctx.beginPath(); ctx.ellipse(0,0,len/2,stick,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+  };
+  const dot=(p,col,r)=>{ ctx.fillStyle=`rgb(${col})`; ctx.beginPath(); ctx.arc(p[0],p[1],r,0,Math.PI*2); ctx.fill(); };
   for(const f of figures){
     if(!f.group.visible) continue;
     const {pts,vis}=f.kpBody(cam); const p2=pts.map(proj);
-    LIMBS.forEach(([a,b],i)=>{
-      if(!vis[a]||!vis[b]||!p2[a]||!p2[b]) return;
-      const [x1,y1]=p2[a],[x2,y2]=p2[b], len=Math.hypot(x2-x1,y2-y1);
-      ctx.save(); ctx.globalAlpha=0.6; ctx.fillStyle=`rgb(${COLORS[i]})`;
-      ctx.translate((x1+x2)/2,(y1+y2)/2); ctx.rotate(Math.atan2(y2-y1,x2-x1));
-      ctx.beginPath(); ctx.ellipse(0,0,len/2,stick,0,0,Math.PI*2); ctx.fill(); ctx.restore();
-    });
-    p2.forEach((p,i)=>{ if(!p||!vis[i]) return; ctx.fillStyle=`rgb(${COLORS[i]})`; ctx.beginPath(); ctx.arc(p[0],p[1],stick,0,Math.PI*2); ctx.fill(); });
-    if(!hands) continue;
+    LIMBS.forEach(([a,b],i)=>{ if(vis[a]&&vis[b]&&p2[a]&&p2[b]) bone(p2[a],p2[b],COLORS[i]); });
+    const fs=FOOT_STYLE[o.feet];
+    if(fs){
+      const q=[...p2,...footPts(f,o.feet).map(proj)];
+      fs.edges.forEach(([a,b],i)=>{ if(q[a]&&q[b]&&(a>=18||vis[a])) bone(q[a],q[b],fs.cols[i]); });
+      fs.edges.forEach(([a,b],i)=>{ if(q[b]&&(a>=18||vis[a])) dot(q[b],fs.cols[i],stick); });
+    }
+    p2.forEach((p,i)=>{ if(p&&vis[i]) dot(p,COLORS[i],stick); });
+    if(o.face){   // DWPose draws the 68 face points as small white dots (radius 3 at its 512px detect size)
+      const {pts:fp,vis:fv}=f.kpFace(cam), r=Math.max(1,Math.round(Math.min(W,H)/170));
+      fp.forEach((p,i)=>{ const q=fv[i]&&proj(p); if(q) dot(q,[255,255,255],r); });
+    }
+    if(!o.hands) continue;
     const lw=Math.max(1,Math.round(Math.min(W,H)/400)), pr=Math.max(2,Math.round(Math.min(W,H)/280));
     for(const s of ['L','R']){
       const h2=f.kpHand(s).map(proj); if(h2.some(p=>!p)) continue;
@@ -874,9 +945,26 @@ function drawOpenPose(ctx,W,H,cam,hands){
   }
 }
 
+// side-on warning: when the line of sight runs nearly along both the shoulder line and the hip line, the left/right points overlap
+// in the OpenPose image and the body's facing is lost. sideness = sine of the angle between that line and the line of sight
+const SIDE_WARN=0.3;   // about 17 degrees from a pure side view
+function sideness(f,cam){
+  f.group.updateMatrixWorld(true);
+  const cp=wpos(cam), w=n=>wpos(f.J[n]);
+  const one=(a,b)=>{ const pa=w(a), pb=w(b), lat=pa.clone().sub(pb).normalize(), view=pa.add(pb).multiplyScalar(.5).sub(cp).normalize(); return Math.sqrt(Math.max(0,1-lat.dot(view)**2)); };
+  return Math.max(one('shoulderL','shoulderR'),one('hipL','hipR'));
+}
+const sideFigures=cam=>figures.filter(f=>f.group.visible&&sideness(f,cam)<SIDE_WARN);
+function showSideWarn(cam){
+  const list=sideFigures(cam), el=$('opWarn');
+  el.hidden=!list.length;
+  if(list.length) el.textContent=`${figures.length>1?list.map(f=>f.name).join('・')+'：':''}ほぼ真横を向いています。OpenPose では左右の肩・腰が重なって体の向きが伝わりにくいので、少し斜め（真横から 20° ほど）にすると安定します。`;
+  $('frame').classList.toggle('side',!!list.length);
+}
+
 // OpenPose keypoint JSON (same points as the image; pixel coords, hidden points are [0,0,0])
 function openposeJSON(opts={}){
-  const [W,H]=opts.size||outSize(), cam=opts.cam||exportCam(), hands=$('opHands').checked;
+  const [W,H]=opts.size||outSize(), cam=opts.cam||exportCam(), {hands,feet,face}=opOpts();
   const proj=p=>{ const v=p.clone().project(cam); return v.z>1?null:[(v.x+1)/2*W,(1-v.y)/2*H]; };
   const flat=(pts,vis)=>pts.flatMap((p,i)=>p&&(!vis||vis[i])?[Math.round(p[0]*100)/100,Math.round(p[1]*100)/100,1]:[0,0,0]);
   const people=[];
@@ -884,7 +972,9 @@ function openposeJSON(opts={}){
     if(!f.group.visible) continue;
     const {pts,vis}=f.kpBody(cam);
     const hand=s=>{ if(!hands) return null; const h=f.kpHand(s).map(proj); return h.some(p=>!p)?null:flat(h); };
-    people.push({pose_keypoints_2d:flat(pts.map(proj),vis),hand_left_keypoints_2d:hand('L'),hand_right_keypoints_2d:hand('R'),face_keypoints_2d:null});
+    const fc=face?f.kpFace(cam):null, person={pose_keypoints_2d:flat(pts.map(proj),vis),hand_left_keypoints_2d:hand('L'),hand_right_keypoints_2d:hand('R'),face_keypoints_2d:fc?flat(fc.pts.map(proj),fc.vis):null};
+    if(feet!=='none') person.foot_keypoints_2d=flat(f.kpFoot().map(proj));   // COCO-WholeBody order: L big toe, L small toe, L heel, R big toe, R small toe, R heel
+    people.push(person);
   }
   return {people,canvas_width:W,canvas_height:H};
 }
@@ -908,7 +998,7 @@ function renderImage(kind,opts={}){
   const [W,H]=opts.size||outSize(), cam=opts.cam||exportCam();
   const hidden=[]; if(opts.only) for(const f of figures) if(f!==opts.only&&f.group.visible){ f.group.visible=false; hidden.push(f); }
   const restoreFigs=()=>hidden.forEach(f=>f.group.visible=true);
-  if(kind==='openpose'){ const c=document.createElement('canvas'); c.width=W; c.height=H; drawOpenPose(c.getContext('2d'),W,H,cam,$('opHands').checked); restoreFigs(); return c; }
+  if(kind==='openpose'){ const c=document.createElement('canvas'); c.width=W; c.height=H; drawOpenPose(c.getContext('2d'),W,H,cam,opOpts()); restoreFigs(); return c; }
   if(kind==='lineart'){ restoreFigs(); return lineArt(W,H,cam,opts); }
   for(const f of figures) f.syncSkin(true);
   const r=getXR(W,H), keepSel=sel, propsVis=propRoot.visible, gizVis=gizmo.visible;
@@ -1209,9 +1299,12 @@ function loop(){
   orbit.update(); updateHandles();
   const fine=performance.now()-bodyEditAt>350; for(const f of figures) f.syncSkin(fine);
   renderer.render(scene,camera);
-  if(dirty){ dirty=false; const pc=$('opPreview'); drawOpenPose(pctx,pc.width,pc.height,exportCam(),$('opHands').checked); }
+  if(dirty){ dirty=false; const pc=$('opPreview'), cam=exportCam(); drawOpenPose(pctx,pc.width,pc.height,cam,opOpts()); showSideWarn(cam); }
 }
-$('opHands').addEventListener('change',()=>dirty=true);
+// OpenPose options (kept in localStorage 'posedoll:op')
+{ let o=null; try{ o=JSON.parse(lsGet('posedoll:op')||'null'); }catch(e){}
+  if(o){ if(typeof o.hands==='boolean') $('opHands').checked=o.hands; if(FOOT_STYLE[o.feet]) $('opFeet').value=o.feet; if(typeof o.face==='boolean') $('opFace').checked=o.face; } }
+['opHands','opFeet','opFace'].forEach(id=>$(id).addEventListener('change',()=>{ dirty=true; lsSet('posedoll:op',JSON.stringify(opOpts())); }));
 
 // boot
 limitsOn=lsGet('posedoll:lim')!=='0'; $('tLim').classList.toggle('on',limitsOn);
@@ -1229,4 +1322,4 @@ showTab(lsGet('posedoll:tab')||'pose');
 renderLib(); initLib();
 loop();
 window.__pose={THREE,applyLLM,llmPrompt,solvePole,solveElbow,setLook,getLook:()=>look,camera:()=>camera,figures:()=>figures,active:()=>active,getScene,setScene,getCam,setCam,batchZip,getSel:()=>sel,sceneFile,openposeJSON,applyPreset,renderImage,select,setView,solveLimb,mirrorPose,limitsFor,clampJoint,addProp,setFinger,setSpread,commit,
-  setIK:v=>{ ikOn=v; syncHandles(); }, setLimits:v=>{ limitsOn=v; }};
+  setPlace,sideness,FACE_TPL,setIK:v=>{ ikOn=v; syncHandles(); }, setLimits:v=>{ limitsOn=v; }};
