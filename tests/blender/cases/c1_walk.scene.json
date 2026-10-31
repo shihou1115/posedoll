@@ -1,0 +1,1113 @@
+{
+ "format": "posedoll-scene",
+ "formatVersion": "2.1",
+ "v": 2,
+ "figures": [
+  {
+   "name": "人物1",
+   "pos": [
+    0,
+    0,
+    0
+   ],
+   "body": {
+    "height": 1,
+    "head": 1,
+    "shoulder": 1,
+    "hipW": 1,
+    "torso": 1,
+    "arm": 1,
+    "leg": 1,
+    "thick": 1
+   },
+   "pose": {
+    "rot": {
+     "spine": [
+      0,
+      6,
+      0
+     ],
+     "chest": [
+      0,
+      -8,
+      0
+     ],
+     "shoulderL": [
+      18,
+      0,
+      6
+     ],
+     "elbowL": [
+      -10,
+      0,
+      0
+     ],
+     "shoulderR": [
+      -22,
+      0,
+      -6
+     ],
+     "elbowR": [
+      -30,
+      0,
+      0
+     ],
+     "hipL": [
+      -25,
+      0,
+      0
+     ],
+     "kneeL": [
+      10,
+      0,
+      0
+     ],
+     "hipR": [
+      18,
+      0,
+      0
+     ],
+     "kneeR": [
+      28,
+      0,
+      0
+     ],
+     "ankleR": [
+      15,
+      0,
+      0
+     ]
+    },
+    "root": [
+     0,
+     0.932,
+     0
+    ]
+   },
+   "skeleton": {
+    "units": "m",
+    "up": "+Y",
+    "front": "+Z",
+    "left": "+X",
+    "euler": "XZY",
+    "angles": "deg",
+    "nodes": {
+     "hips": {
+      "parent": null,
+      "offset": [
+       0,
+       0.932368,
+       0
+      ],
+      "joint": true
+     },
+     "spine": {
+      "parent": "hips",
+      "offset": [
+       0,
+       0.1,
+       0
+      ],
+      "joint": true
+     },
+     "chest": {
+      "parent": "spine",
+      "offset": [
+       0,
+       0.18,
+       0
+      ],
+      "joint": true
+     },
+     "neck": {
+      "parent": "chest",
+      "offset": [
+       0,
+       0.22,
+       0
+      ],
+      "joint": true
+     },
+     "head": {
+      "parent": "neck",
+      "offset": [
+       0,
+       0.085,
+       0
+      ],
+      "joint": true
+     },
+     "headGroup": {
+      "parent": "head",
+      "offset": [
+       0,
+       0,
+       0
+      ],
+      "rest": [
+       0,
+       0,
+       0
+      ]
+     },
+     "shoulderL": {
+      "parent": "chest",
+      "offset": [
+       0.165,
+       0.17,
+       0
+      ],
+      "joint": true
+     },
+     "elbowL": {
+      "parent": "shoulderL",
+      "offset": [
+       0,
+       -0.28,
+       0
+      ],
+      "joint": true
+     },
+     "wristL": {
+      "parent": "elbowL",
+      "offset": [
+       0,
+       -0.25,
+       0
+      ],
+      "joint": true
+     },
+     "fL_index1": {
+      "parent": "wristL",
+      "offset": [
+       0,
+       -0.095,
+       0.027
+      ],
+      "joint": true
+     },
+     "fL_index2": {
+      "parent": "fL_index1",
+      "offset": [
+       0,
+       -0.042,
+       0
+      ],
+      "joint": true
+     },
+     "fL_index3": {
+      "parent": "fL_index2",
+      "offset": [
+       0,
+       -0.026,
+       0
+      ],
+      "joint": true
+     },
+     "fL_middle1": {
+      "parent": "wristL",
+      "offset": [
+       0,
+       -0.098,
+       0.009
+      ],
+      "joint": true
+     },
+     "fL_middle2": {
+      "parent": "fL_middle1",
+      "offset": [
+       0,
+       -0.046,
+       0
+      ],
+      "joint": true
+     },
+     "fL_middle3": {
+      "parent": "fL_middle2",
+      "offset": [
+       0,
+       -0.029,
+       0
+      ],
+      "joint": true
+     },
+     "fL_ring1": {
+      "parent": "wristL",
+      "offset": [
+       0,
+       -0.095,
+       -0.009
+      ],
+      "joint": true
+     },
+     "fL_ring2": {
+      "parent": "fL_ring1",
+      "offset": [
+       0,
+       -0.043,
+       0
+      ],
+      "joint": true
+     },
+     "fL_ring3": {
+      "parent": "fL_ring2",
+      "offset": [
+       0,
+       -0.027,
+       0
+      ],
+      "joint": true
+     },
+     "fL_pinky1": {
+      "parent": "wristL",
+      "offset": [
+       0,
+       -0.088,
+       -0.025
+      ],
+      "joint": true
+     },
+     "fL_pinky2": {
+      "parent": "fL_pinky1",
+      "offset": [
+       0,
+       -0.033,
+       0
+      ],
+      "joint": true
+     },
+     "fL_pinky3": {
+      "parent": "fL_pinky2",
+      "offset": [
+       0,
+       -0.021,
+       0
+      ],
+      "joint": true
+     },
+     "fL_thumbBase": {
+      "parent": "wristL",
+      "offset": [
+       -0.008,
+       -0.022,
+       0.026
+      ],
+      "rest": [
+       -40,
+       0,
+       -28
+      ]
+     },
+     "fL_thumb1": {
+      "parent": "fL_thumbBase",
+      "offset": [
+       0,
+       0,
+       0
+      ],
+      "joint": true
+     },
+     "fL_thumb2": {
+      "parent": "fL_thumb1",
+      "offset": [
+       0,
+       -0.04,
+       0
+      ],
+      "joint": true
+     },
+     "fL_thumb3": {
+      "parent": "fL_thumb2",
+      "offset": [
+       0,
+       -0.032,
+       0
+      ],
+      "joint": true
+     },
+     "shoulderR": {
+      "parent": "chest",
+      "offset": [
+       -0.165,
+       0.17,
+       0
+      ],
+      "joint": true
+     },
+     "elbowR": {
+      "parent": "shoulderR",
+      "offset": [
+       0,
+       -0.28,
+       0
+      ],
+      "joint": true
+     },
+     "wristR": {
+      "parent": "elbowR",
+      "offset": [
+       0,
+       -0.25,
+       0
+      ],
+      "joint": true
+     },
+     "fR_index1": {
+      "parent": "wristR",
+      "offset": [
+       0,
+       -0.095,
+       0.027
+      ],
+      "joint": true
+     },
+     "fR_index2": {
+      "parent": "fR_index1",
+      "offset": [
+       0,
+       -0.042,
+       0
+      ],
+      "joint": true
+     },
+     "fR_index3": {
+      "parent": "fR_index2",
+      "offset": [
+       0,
+       -0.026,
+       0
+      ],
+      "joint": true
+     },
+     "fR_middle1": {
+      "parent": "wristR",
+      "offset": [
+       0,
+       -0.098,
+       0.009
+      ],
+      "joint": true
+     },
+     "fR_middle2": {
+      "parent": "fR_middle1",
+      "offset": [
+       0,
+       -0.046,
+       0
+      ],
+      "joint": true
+     },
+     "fR_middle3": {
+      "parent": "fR_middle2",
+      "offset": [
+       0,
+       -0.029,
+       0
+      ],
+      "joint": true
+     },
+     "fR_ring1": {
+      "parent": "wristR",
+      "offset": [
+       0,
+       -0.095,
+       -0.009
+      ],
+      "joint": true
+     },
+     "fR_ring2": {
+      "parent": "fR_ring1",
+      "offset": [
+       0,
+       -0.043,
+       0
+      ],
+      "joint": true
+     },
+     "fR_ring3": {
+      "parent": "fR_ring2",
+      "offset": [
+       0,
+       -0.027,
+       0
+      ],
+      "joint": true
+     },
+     "fR_pinky1": {
+      "parent": "wristR",
+      "offset": [
+       0,
+       -0.088,
+       -0.025
+      ],
+      "joint": true
+     },
+     "fR_pinky2": {
+      "parent": "fR_pinky1",
+      "offset": [
+       0,
+       -0.033,
+       0
+      ],
+      "joint": true
+     },
+     "fR_pinky3": {
+      "parent": "fR_pinky2",
+      "offset": [
+       0,
+       -0.021,
+       0
+      ],
+      "joint": true
+     },
+     "fR_thumbBase": {
+      "parent": "wristR",
+      "offset": [
+       0.008,
+       -0.022,
+       0.026
+      ],
+      "rest": [
+       -40,
+       0,
+       28
+      ]
+     },
+     "fR_thumb1": {
+      "parent": "fR_thumbBase",
+      "offset": [
+       0,
+       0,
+       0
+      ],
+      "joint": true
+     },
+     "fR_thumb2": {
+      "parent": "fR_thumb1",
+      "offset": [
+       0,
+       -0.04,
+       0
+      ],
+      "joint": true
+     },
+     "fR_thumb3": {
+      "parent": "fR_thumb2",
+      "offset": [
+       0,
+       -0.032,
+       0
+      ],
+      "joint": true
+     },
+     "hipL": {
+      "parent": "hips",
+      "offset": [
+       0.095,
+       -0.06,
+       0
+      ],
+      "joint": true
+     },
+     "kneeL": {
+      "parent": "hipL",
+      "offset": [
+       0,
+       -0.42,
+       0
+      ],
+      "joint": true
+     },
+     "ankleL": {
+      "parent": "kneeL",
+      "offset": [
+       0,
+       -0.42,
+       0
+      ],
+      "joint": true
+     },
+     "hipR": {
+      "parent": "hips",
+      "offset": [
+       -0.095,
+       -0.06,
+       0
+      ],
+      "joint": true
+     },
+     "kneeR": {
+      "parent": "hipR",
+      "offset": [
+       0,
+       -0.42,
+       0
+      ],
+      "joint": true
+     },
+     "ankleR": {
+      "parent": "kneeR",
+      "offset": [
+       0,
+       -0.42,
+       0
+      ],
+      "joint": true
+     }
+    },
+    "marks": {
+     "nose": {
+      "parent": "headGroup",
+      "offset": [
+       0,
+       0.085,
+       0.11
+      ]
+     },
+     "eyeL": {
+      "parent": "headGroup",
+      "offset": [
+       0.034,
+       0.125,
+       0.083
+      ]
+     },
+     "eyeR": {
+      "parent": "headGroup",
+      "offset": [
+       -0.034,
+       0.125,
+       0.083
+      ]
+     },
+     "earL": {
+      "parent": "headGroup",
+      "offset": [
+       0.088,
+       0.105,
+       0
+      ]
+     },
+     "earR": {
+      "parent": "headGroup",
+      "offset": [
+       -0.088,
+       0.105,
+       0
+      ]
+     },
+     "L_index_tip": {
+      "parent": "fL_index3",
+      "offset": [
+       0,
+       -0.022,
+       0
+      ]
+     },
+     "L_middle_tip": {
+      "parent": "fL_middle3",
+      "offset": [
+       0,
+       -0.023,
+       0
+      ]
+     },
+     "L_ring_tip": {
+      "parent": "fL_ring3",
+      "offset": [
+       0,
+       -0.022,
+       0
+      ]
+     },
+     "L_pinky_tip": {
+      "parent": "fL_pinky3",
+      "offset": [
+       0,
+       -0.019,
+       0
+      ]
+     },
+     "L_thumb_tip": {
+      "parent": "fL_thumb3",
+      "offset": [
+       0,
+       -0.026,
+       0
+      ]
+     },
+     "R_index_tip": {
+      "parent": "fR_index3",
+      "offset": [
+       0,
+       -0.022,
+       0
+      ]
+     },
+     "R_middle_tip": {
+      "parent": "fR_middle3",
+      "offset": [
+       0,
+       -0.023,
+       0
+      ]
+     },
+     "R_ring_tip": {
+      "parent": "fR_ring3",
+      "offset": [
+       0,
+       -0.022,
+       0
+      ]
+     },
+     "R_pinky_tip": {
+      "parent": "fR_pinky3",
+      "offset": [
+       0,
+       -0.019,
+       0
+      ]
+     },
+     "R_thumb_tip": {
+      "parent": "fR_thumb3",
+      "offset": [
+       0,
+       -0.026,
+       0
+      ]
+     },
+     "L_bigtoe": {
+      "parent": "ankleL",
+      "offset": [
+       -0.02016,
+       -0.0526,
+       0.1539
+      ]
+     },
+     "L_smalltoe": {
+      "parent": "ankleL",
+      "offset": [
+       0.0288,
+       -0.0526,
+       0.1263
+      ]
+     },
+     "L_heel": {
+      "parent": "ankleL",
+      "offset": [
+       0,
+       -0.051,
+       -0.0439
+      ]
+     },
+     "R_bigtoe": {
+      "parent": "ankleR",
+      "offset": [
+       0.02016,
+       -0.0526,
+       0.1539
+      ]
+     },
+     "R_smalltoe": {
+      "parent": "ankleR",
+      "offset": [
+       -0.0288,
+       -0.0526,
+       0.1263
+      ]
+     },
+     "R_heel": {
+      "parent": "ankleR",
+      "offset": [
+       0,
+       -0.051,
+       -0.0439
+      ]
+     }
+    },
+    "face": {
+     "parent": "headGroup",
+     "points": [
+      [
+       -0.079,
+       0.112,
+       0.015
+      ],
+      [
+       -0.077482,
+       0.080146,
+       0.028266
+      ],
+      [
+       -0.072986,
+       0.060951,
+       0.041022
+      ],
+      [
+       -0.065686,
+       0.04573,
+       0.052779
+      ],
+      [
+       -0.055861,
+       0.033542,
+       0.063083
+      ],
+      [
+       -0.04389,
+       0.02412,
+       0.07154
+      ],
+      [
+       -0.030232,
+       0.017391,
+       0.077824
+      ],
+      [
+       -0.015412,
+       0.013349,
+       0.081693
+      ],
+      [
+       0,
+       0.012,
+       0.083
+      ],
+      [
+       0.015412,
+       0.013349,
+       0.081693
+      ],
+      [
+       0.030232,
+       0.017391,
+       0.077824
+      ],
+      [
+       0.04389,
+       0.02412,
+       0.07154
+      ],
+      [
+       0.055861,
+       0.033542,
+       0.063083
+      ],
+      [
+       0.065686,
+       0.04573,
+       0.052779
+      ],
+      [
+       0.072986,
+       0.060951,
+       0.041022
+      ],
+      [
+       0.077482,
+       0.080146,
+       0.028266
+      ],
+      [
+       0.079,
+       0.112,
+       0.015
+      ],
+      [
+       -0.062,
+       0.141,
+       0.069039
+      ],
+      [
+       -0.0505,
+       0.14595,
+       0.078836
+      ],
+      [
+       -0.039,
+       0.148,
+       0.086315
+      ],
+      [
+       -0.0275,
+       0.14595,
+       0.092616
+      ],
+      [
+       -0.016,
+       0.141,
+       0.09747
+      ],
+      [
+       0.016,
+       0.141,
+       0.09747
+      ],
+      [
+       0.0275,
+       0.14595,
+       0.092616
+      ],
+      [
+       0.039,
+       0.148,
+       0.086315
+      ],
+      [
+       0.0505,
+       0.14595,
+       0.078836
+      ],
+      [
+       0.062,
+       0.141,
+       0.069039
+      ],
+      [
+       0,
+       0.128,
+       0.101726
+      ],
+      [
+       0,
+       0.114,
+       0.106937
+      ],
+      [
+       0,
+       0.1,
+       0.110609
+      ],
+      [
+       0,
+       0.086,
+       0.113724
+      ],
+      [
+       -0.016,
+       0.077,
+       0.101939
+      ],
+      [
+       -0.008,
+       0.077,
+       0.103225
+      ],
+      [
+       0,
+       0.075,
+       0.107092
+      ],
+      [
+       0.008,
+       0.077,
+       0.103225
+      ],
+      [
+       0.016,
+       0.077,
+       0.101939
+      ],
+      [
+       -0.047,
+       0.125,
+       0.084201
+      ],
+      [
+       -0.039,
+       0.13,
+       0.088357
+      ],
+      [
+       -0.029,
+       0.13,
+       0.09298
+      ],
+      [
+       -0.021,
+       0.125,
+       0.096282
+      ],
+      [
+       -0.029,
+       0.121,
+       0.094113
+      ],
+      [
+       -0.039,
+       0.121,
+       0.089552
+      ],
+      [
+       0.021,
+       0.125,
+       0.096282
+      ],
+      [
+       0.029,
+       0.13,
+       0.09298
+      ],
+      [
+       0.039,
+       0.13,
+       0.088357
+      ],
+      [
+       0.047,
+       0.125,
+       0.084201
+      ],
+      [
+       0.039,
+       0.121,
+       0.089552
+      ],
+      [
+       0.029,
+       0.121,
+       0.094113
+      ],
+      [
+       -0.022,
+       0.052,
+       0.089176
+      ],
+      [
+       -0.014,
+       0.056,
+       0.09343
+      ],
+      [
+       -0.005,
+       0.058,
+       0.095618
+      ],
+      [
+       0,
+       0.057,
+       0.095333
+      ],
+      [
+       0.005,
+       0.058,
+       0.095618
+      ],
+      [
+       0.014,
+       0.056,
+       0.09343
+      ],
+      [
+       0.022,
+       0.052,
+       0.089176
+      ],
+      [
+       0.014,
+       0.047,
+       0.088512
+      ],
+      [
+       0.005,
+       0.044,
+       0.087981
+      ],
+      [
+       0,
+       0.044,
+       0.088177
+      ],
+      [
+       -0.005,
+       0.044,
+       0.087981
+      ],
+      [
+       -0.014,
+       0.047,
+       0.088512
+      ],
+      [
+       -0.018,
+       0.052,
+       0.089404
+      ],
+      [
+       -0.006,
+       0.053,
+       0.092094
+      ],
+      [
+       0,
+       0.053,
+       0.092359
+      ],
+      [
+       0.006,
+       0.053,
+       0.092094
+      ],
+      [
+       0.018,
+       0.052,
+       0.089404
+      ],
+      [
+       0.006,
+       0.05,
+       0.090481
+      ],
+      [
+       0,
+       0.05,
+       0.090751
+      ],
+      [
+       -0.006,
+       0.05,
+       0.090481
+      ]
+     ]
+    }
+   }
+  }
+ ],
+ "props": [],
+ "active": 0,
+ "cam": {
+  "pos": [
+   1.9,
+   1.4,
+   3.6
+  ],
+  "target": [
+   0,
+   0.9,
+   0
+  ],
+  "fov": 30,
+  "frameFov": true,
+  "size": [
+   832,
+   1216
+  ],
+  "place": [
+   0,
+   0,
+   1
+  ],
+  "lens": {
+   "fovY": 30,
+   "aspect": 0.684211,
+   "center": [
+    0,
+    0
+   ],
+   "size": [
+    832,
+    1216
+   ]
+  }
+ }
+}

@@ -44,10 +44,11 @@ const HTML = path.resolve(__dirname, '..', 'posedoll.html');
     // 書き出し3種
     out.render = ['doll', 'openpose', 'depth', 'normal', 'lineart'].map(k => { const c = P.renderImage(k); return `${k}:${c.width}x${c.height}`; });
     // 保存庫: 保存 → 一覧 → 削除
-    document.getElementById('libName').value = 'テスト'; document.getElementById('libSave').click(); await wait(1500);
+    document.getElementById('libName').value = 'テスト'; document.getElementById('libSave').click();
+    for (let i = 0; i < 80 && !document.querySelector('.lib-item'); i++) await wait(100);   // 遅い環境ではサムネイル作成に時間がかかる
     out.libSaved = document.querySelectorAll('.lib-item').length;
     { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('t'); let j = null;
-      for await (const [n, h] of d.entries()) if (n.endsWith('.json')) j = JSON.parse(await (await h.getFile()).text());
+      for await (const [n, h] of d.entries()) if (n.endsWith('.json')) { const t = await (await h.getFile()).text(); if (t) j = JSON.parse(t); }   // 空ファイル（日本語名の書き込み失敗の残り）は飛ばす
       out.libHasCam = !!(j && j.cam && j.cam.rel === 'hips' && j.cam.pos.length === 3); }
     const del = [...document.querySelectorAll('.lib-item button')].find(x => x.textContent === '削除'); del.click(); del.click(); await wait(800);
     out.libAfterDelete = document.querySelectorAll('.lib-item').length;
@@ -137,9 +138,9 @@ const HTML = path.resolve(__dirname, '..', 'posedoll.html');
       const len = k => Math.hypot(k[3] - (k[8*3] + k[11*3]) / 2, k[4] - (k[8*3+1] + k[11*3+1]) / 2);
       out.place = Math.abs(b2[3] - a[3] - 0.25 * W) < 1 && Math.abs(b2[4] - a[4]) < 1 && Math.abs(len(c2) / len(a) - 0.6) < 0.01
         && P.camera().view?.enabled === true && JSON.stringify(P.getCam().place) === '[0,0,0.6]';
-      P.setPlace(0, 0, 1); out.placeReset = !P.camera().view?.enabled; }
+      P.setPlace(0, 0, 1); out.placeReset = JSON.stringify(P.getCam().place) === '[0,0,1]' && Math.abs(P.camLens().center[1]) < 1e-9; }
     // カメラ: シーン JSON に入り、読み戻すと同じ視点・画角・サイズ・配置になるか
-    const cam0 = { pos: [1.2, 1.6, 3.1], target: [0.1, 0.95, 0], fov: 40, size: [1024, 1024], place: [0.1, -0.05, 1.2] };
+    const cam0 = { pos: [1.2, 1.6, 3.1], target: [0.1, 0.95, 0], fov: 40, frameFov: true, size: [1024, 1024], place: [0.1, -0.05, 1.2] };
     P.setCam(cam0); const sf = JSON.parse(JSON.stringify(P.sceneFile()));
     P.setCam({ pos: [0, 1, 5], target: [0, 1, 0], fov: 30, size: [832, 1216] });
     P.setCam(sf.cam); const c1 = P.getCam();
@@ -147,9 +148,41 @@ const HTML = path.resolve(__dirname, '..', 'posedoll.html');
     out.camRender = (c => `${c.width}x${c.height}`)(P.renderImage('openpose'));
     out.camNotInUndo = !('cam' in P.getScene());
     P.setCam({ pos: [0, 1, 5], target: [0, 1, 0], fov: 30, size: [832, 1216] }); out.camOldFile = JSON.stringify(P.getCam().place) === '[0,0,1]';   // place の無い古いファイルは配置なしに戻る
+    // v1.7 データ形式: シーン JSON の skeleton だけで全関節・キーポイントの位置が再現できるか。cam.lens だけで画面上の位置が再現できるか
+    { P.applyPreset('手を振る'); const fg = P.active(); fg.setBody({ ...fg.body, height: 0.9, head: 1.2, arm: 1.1 }); fg.J.hips.rotation.set(0.1, 0.7, -0.05);
+      fg.J.fL_index2.rotation.set(0, 0, -0.9); fg.J.fR_thumb1.rotation.set(0.3, 0.2, 0.4);
+      P.setCam({ pos: [1.4, 1.5, 2.9], target: [0.1, 0.9, 0], fov: 35, frameFov: true, size: [1344, 768], place: [0.2, -0.1, 1.3] });
+      P.setScene(JSON.parse(JSON.stringify(P.sceneFile())));   // 比べる相手は保存された値（角度 0.1°・位置 1mm に丸めたもの）
+      const sf = JSON.parse(JSON.stringify(P.sceneFile())), fs = sf.figures[sf.active], sk = fs.skeleton, D = Math.PI / 180;
+      const mat = (o, q, s) => new T.Matrix4().compose(new T.Vector3(...o), q, new T.Vector3(s, s, s));
+      const qE = (d, ord) => new T.Quaternion().setFromEuler(new T.Euler(d[0] * D, d[1] * D, d[2] * D, ord));
+      const G = mat(fs.pos, new T.Quaternion(), fs.body.height), M = {};
+      for (const [n, nd] of Object.entries(sk.nodes)) {
+        const off = n === 'hips' ? fs.pose.root : nd.offset, rot = nd.joint ? (fs.pose.rot[n] || [0, 0, 0]) : nd.rest;
+        M[n] = (nd.parent ? M[nd.parent] : G).clone().multiply(mat(off, qE(rot, sk.euler), nd.scale || 1)); }
+      const wp = (m, o) => new T.Vector3(...o).applyMatrix4(m);
+      let err = 0; fg.group.updateMatrixWorld(true);
+      for (const n of Object.keys(sk.nodes)) if (fg.J[n]) err = Math.max(err, wp(M[n], [0, 0, 0]).distanceTo(fg.J[n].getWorldPosition(new T.Vector3())));
+      for (const [k, mk] of Object.entries(sk.marks)) if (fg.marks[k]) err = Math.max(err, wp(M[mk.parent], mk.offset).distanceTo(fg.marks[k].getWorldPosition(new T.Vector3())));
+      const ft = fg.kpFoot(); ['L', 'R'].forEach((s, i) => ['bigtoe', 'smalltoe', 'heel'].forEach((k, j) => { err = Math.max(err, wp(M['ankle' + s], sk.marks[`${s}_${k}`].offset).distanceTo(ft[i * 3 + j])); }));
+      out.skeletonErr = +err.toExponential(2); out.skeleton = err < 2e-5 && Object.keys(sk.nodes).length === 17 + 30 + 2 + 1;
+      // lens: 保存された数値だけで作ったカメラで投影し、書き出しの OpenPose と比べる（画面の大きさは使わない）
+      const c = sf.cam, L = c.lens, [W, H] = c.size, cam = new T.PerspectiveCamera(L.fovY, L.aspect, 0.05, 100);
+      cam.position.fromArray(c.pos); cam.lookAt(new T.Vector3(...c.target)); cam.updateMatrixWorld();
+      const proj = v => { const q = v.clone().applyMatrix4(cam.matrixWorldInverse).applyMatrix4(cam.projectionMatrix); return [((q.x + L.center[0]) + 1) / 2 * W, (1 - (q.y + L.center[1])) / 2 * H]; };
+      P.setCam(c); const k = P.openposeJSON().people[sf.active].pose_keypoints_2d;
+      const mine = proj(fg.J.wristR.getWorldPosition(new T.Vector3()));
+      out.lensErrPx = +Math.hypot(mine[0] - k[4 * 3], mine[1] - k[4 * 3 + 1]).toFixed(3); out.lens = out.lensErrPx < 0.05;
+      out.propParts = (P.addProp('chair'), JSON.parse(JSON.stringify(P.sceneFile())).props.slice(-1)[0].parts.length === 6);
+      out.formatTag = sf.format === 'posedoll-scene' && sf.formatVersion === '2.1'; }
     P.setCam({ size: [832, 1216] });
     return out;
   });
+  // 画面（ブラウザの窓）の大きさを変えても書き出しの構図が変わらないか（v1.7）
+  { const k = () => p.evaluate(() => { const j = window.__pose.openposeJSON().people[0].pose_keypoints_2d; return [j[3], j[4], j[13 * 3], j[13 * 3 + 1]]; });
+    const a = await k(); await p.setViewportSize({ width: 1700, height: 950 }); await p.waitForTimeout(400); const b2 = await k();
+    await p.setViewportSize({ width: 1100, height: 1000 }); await p.waitForTimeout(400); const c2 = await k();
+    res.viewportFree = [b2, c2].every(x => x.every((v, i) => Math.abs(v - a[i]) < 0.01)); }
   console.log(JSON.stringify({ ...res, errors: errs }, null, 1));
   await b.close(); srv.close();
 })();
