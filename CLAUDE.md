@@ -64,11 +64,21 @@ library/           利用者の保存庫（ポーズ1件 = JSON 1ファイル）
     手の向きは前腕に従う。手を固定する方式は、ありえないひねりが要る場面が多く可動域の制限で腕が暴れたのでやめた。
   - 軸まわりの回転は `rollAbout()`（setFromUnitVectors は 180° 付近で軸が不定になる）。
 - `setWorldQuat()` は `tidyEuler()` で XZY の別解 (x+180, 180−z, y+180) のうち曲げ・ひねりが小さい方にそろえる（可動域の clamp が壊れないように）。
-- `drawOpenPose()` … controlnet_aux と同じ描き方（体 COCO-18 の色と太さ、手 21 点は HSV 色の線＋青い点）。
+- `drawOpenPose(ctx,W,H,cam,opOpts())` … controlnet_aux と同じ描き方（体 COCO-18 の色と太さ、手 21 点は HSV 色の線＋青い点）。
+  v1.6 で任意の顔の点と足先を追加（出力タブ、選択は localStorage `posedoll:op`）。
+  - 顔 `kpFace()` … DWPose と同じ iBUG 68 点の順。頭の楕円（headGroup 空間）上の型 `FACE_TPL` から作る近似。頭の中心から外向きがカメラの反対なら隠す。
+    白い点、半径は短辺/170（DWPose は 512px で半径 3）。
+  - 足先 `kpFoot()` … COCO-WholeBody の順（左の親指側・小指側・かかと、右も同じ）。人形の足の楕円（`footMesh`）の足裏寄りの点。
+    comfyui_controlnet_aux の DWPose は足の点を描かない（取り出すが捨てる）ので、描き方は2つから選ぶ:
+    `body25` = OpenPose BODY_25（足首→親指・親指→小指・足首→かかと、左 (0,0,255) 右 (0,255,255)）、
+    `toe` = Wan Animate（kijai/ComfyUI-WanAnimatePreprocess）の 1点（親指と小指の中点、左 (200,200,0) 右 (100,100,0)）。棒の太さ・透明度は体と同じ。
+- 真横の警告（v1.6）… `sideness()` = 肩の線・腰の線と視線のなす角の sin の大きい方。`SIDE_WARN`（0.3 ≒ 17°）未満で出力タブに警告、書き出し枠も赤くなる。
+- 枠の中の配置（v1.6）… `place {x,y,s}`（枠の幅・高さに対する割合、右・上が＋、大きさ 0.4〜2.5）。画面のカメラにも `setViewOffset` で
+  レンズシフト＋拡大をかけ（`applyPlace()`）、`exportCam()` も同じずれを合成するので、枠の見た目＝書き出し。遠近は変わらない。
 - `renderImage(kind)` … 'doll' / 'openpose' / 'depth' / 'normal' / 'lineart' を書き出し枠（`exportCam()`）で描く。
 - 保存まわり … File System Access API。選んだフォルダのハンドルは IndexedDB（DB `posedoll`、ストア `kv`、キー `dir_lib` / `dir_out`）に記憶。
   未対応ブラウザ（Firefox）では保存庫は localStorage（`posedoll:lib`）。
-- 自動保存 … localStorage `posedoll:v2`（シーン）、`posedoll:cam`（視点・画角・出力サイズ）、`posedoll:batch`（一括書き出しの選択）、ほかに `posedoll:tab` `posedoll:ik` `posedoll:lim` `posedoll:floor` `posedoll:look`。
+- 自動保存 … localStorage `posedoll:v2`（シーン）、`posedoll:cam`（視点・画角・出力サイズ・枠の中の配置）、`posedoll:op`（OpenPose の手・顔・足先）、`posedoll:batch`（一括書き出しの選択）、ほかに `posedoll:tab` `posedoll:ik` `posedoll:lim` `posedoll:floor` `posedoll:look`。
 - 見た目（v1.3）… `look`（'human' 既定 / 'doll'）。localStorage `posedoll:look`。体型タブのボタンで切り替え。
   - 人体: `ANAT`（体）と `ANAT_HAND`＋指（手）の球・角丸円錐・角丸箱を、骨ごとのローカル座標（本人の左側、右は x 反転）で定義。
     体型の効き方は `SK_F`。`updateSkin()` がバインド姿勢（肩 ±45°・股 ±8°・指を開く）で距離場を作り、`skin.js` の `buildSkin()` で
@@ -91,9 +101,11 @@ library/           利用者の保存庫（ポーズ1件 = JSON 1ファイル）
 
 ### データ形式
 - シーン JSON: `{v:2, figures:[{name, pos, body, pose:{rot:{関節名:[x,y,z]度}, root:[x,y,z]}}], props:[{type,pos,rot,scl}], active, cam?:{pos,target,fov,size:[W,H]}}`。
-  `cam` はファイル保存時だけ付く（undo 履歴・自動保存の `posedoll:v2` には入れない）。
+  `cam` はファイル保存時だけ付く（undo 履歴・自動保存の `posedoll:v2` には入れない）。v1.6 で `cam.place:[x,y,s]`（枠の中の配置）を追加。
+  シーンや `posedoll:cam` に `place` が無ければ配置なしに戻す。保存庫の cam に無ければ今の配置のまま。
   `v` がない古い形式 `{rot, root, head}` も読める。
-- OpenPose JSON: `{people:[{pose_keypoints_2d(18×3), hand_left_keypoints_2d(21×3|null), hand_right_keypoints_2d, face_keypoints_2d:null}], canvas_width, canvas_height}`。
+- OpenPose JSON: `{people:[{pose_keypoints_2d(18×3), hand_left_keypoints_2d(21×3|null), hand_right_keypoints_2d, face_keypoints_2d(68×3|null), foot_keypoints_2d?(6×3)}], canvas_width, canvas_height}`。
+  `foot_keypoints_2d` は足先を描くときだけ付く（描き方が 1点でも 6点で入れる）。
   座標は出力サイズのピクセル、見えない点は `[0,0,0]`。left/right は本人から見た左右。画像と同じ投影（kpBody/kpHand）。
 - 保存庫 1件: `{posedollPose:1, name, created(ms), pose, body, cam?, thumb(dataURL JPEG)}`。`cam` は v1.2 以降（腰からの相対、`rel:'hips'`）。ファイル名は `日時_名前.json`
   （日本語名が使えないファイルシステムでは `日時_pose.json`）。
@@ -103,7 +115,12 @@ library/           利用者の保存庫（ポーズ1件 = JSON 1ファイル）
   この仮想フォルダは日本語のファイル名を受け付けないため、テストでは `日時_pose.json` 側の動きになる。
 - 実際の Windows のフォルダ選択画面は自動では試せない。フォルダまわりを変えたら、ユーザーに実機で一度試してもらう。
 
+## 改良要望
+- 未対応の要望は requests/ フォルダにまとめてある。作業を始めるときに確認し、対応したらファイル末尾に対応内容と版を書き足すこと。
+
 ## 変更履歴
+- v1.6（2026-10）requests/2026-10-29 の要望（歩行アニメ検証）に対応。真横に近い角度の警告、OpenPose の足先（BODY_25 式 3点 / Wan Animate 式 1点）と
+  顔の点（DWPose の白い点 68）、書き出し枠の中の配置と大きさ（`cam.place`）。smoke_test に `sideWarn` `feetFace` `faceBack` `feetToe` `feetOff` `place` `placeReset` `camOldFile`。
 - v1.5（2026-10）言葉でポーズ。LLM 向け指示書（`src/llm_prompt.md` → `LLM_POSE.md`）のコピー／保存と、返事の JSON の貼り付け反映（`src/llmpose.js`）。
   アプリから LLM を呼ぶ方式（LM Studio 直接）は通信を足すので見送り。smoke_test に `llmPose`。
 - v1.4（2026-10）IK モードでひじ・ひざの球も動かせるように（ひざ `solvePole()`、ひじ `solveElbow()`）。IK 後のオイラー角の別解をそろえる `tidyEuler()`。smoke_test に `ikElbow` `ikKnee`。

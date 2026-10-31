@@ -107,14 +107,46 @@ const HTML = path.resolve(__dirname, '..', 'posedoll.html');
       f.setBody({ ...f.body, thick: 1 });
       P.setLook('doll'); out.lookDoll = f.meshes.every(m => m.visible) && f.skin.meshes.every(m => !m.visible) && P.renderImage('depth').width > 0;
       P.setLook('human'); P.applyPreset('直立'); }
-    // カメラ: シーン JSON に入り、読み戻すと同じ視点・画角・サイズになるか
-    const cam0 = { pos: [1.2, 1.6, 3.1], target: [0.1, 0.95, 0], fov: 40, size: [1024, 1024] };
+    // 真横の警告（v1.6）: 腰 -90°（真横）で警告、-70°（真横から 20°）と正面では出ない。出力タブの表示も切り替わる
+    { const D = Math.PI / 180, warnAt = async deg => { P.applyPreset('直立'); f.J.hips.rotation.y = deg * D; P.setView('front'); await wait(120);
+        return [P.sideness(f, P.camera()) < 0.3, !document.getElementById('opWarn').hidden]; };
+      const s90 = await warnAt(-90), s70 = await warnAt(-70), s0 = await warnAt(0);
+      out.sideWarn = s90.every(Boolean) && !s70.some(Boolean) && !s0.some(Boolean);
+      P.applyPreset('直立'); }
+    // 足先・顔の点（v1.6）: JSON に入り、画像にも描かれる。足先は3点（BODY_25 の色）と1点（Wan Animate の色）
+    { const setOp = (feet, face) => { const sel = document.getElementById('opFeet'), cb = document.getElementById('opFace');
+        sel.value = feet; cb.checked = face; sel.dispatchEvent(new Event('change')); cb.dispatchEvent(new Event('change')); };
+      P.applyPreset('直立'); P.setView('front'); setOp('body25', true);
+      const j = P.openposeJSON(), pp = j.people[0], ft = pp.foot_keypoints_2d, fc = pp.face_keypoints_2d, b = pp.pose_keypoints_2d;
+      const c = P.renderImage('openpose').getContext('2d'), px = (x, y) => [...c.getImageData(Math.round(x), Math.round(y), 1, 1).data];
+      const heelL = px(ft[2*3], ft[2*3+1]), heelR = px(ft[5*3], ft[5*3+1]);
+      const nose = px(fc[30*3], fc[30*3+1]);
+      out.feetFace = ft.length === 18 && fc.length === 204 && fc.filter((v, i) => i % 3 === 2 && v === 1).length === 68
+        && ft[0] < ft[3] && ft[2*3+1] > b[13*3+1]   // 正面: 左足の親指側は小指側より内側（画面の左）、かかとは足首より下
+        && fc[36*3] < fc[45*3] && fc[8*3+1] > fc[30*3+1]   // 右目の外側(36)は画面の左、あご先(8)は鼻(30)より下
+        && heelL[2] > 200 && heelL[0] < 60 && heelR[1] > 200 && heelR[2] > 200 && heelR[0] < 60 && nose.every((v, i) => i === 3 || v > 200);
+      P.setView('back'); out.faceBack = P.openposeJSON().people[0].face_keypoints_2d.filter((v, i) => i % 3 === 2 && v === 1).length;   // 背面では顔の点は見えない（0）
+      P.setView('front'); setOp('toe', false);
+      const j2 = P.openposeJSON().people[0], t = j2.foot_keypoints_2d, toe = [(t[0] + t[3]) / 2, (t[1] + t[4]) / 2];
+      const tp = [...P.renderImage('openpose').getContext('2d').getImageData(Math.round(toe[0]), Math.round(toe[1]), 1, 1).data];
+      out.feetToe = j2.face_keypoints_2d === null && tp[0] > 150 && tp[1] > 150 && tp[2] < 60;   // 左のつま先は (200,200,0)
+      setOp('none', false); out.feetOff = !('foot_keypoints_2d' in P.openposeJSON().people[0]); }
+    // 枠の中の配置（v1.6）: 右へ 25% ずらすと点が幅の 25% 右へ、大きさ 60% で首〜腰の長さが 0.6 倍。画面のカメラにも効き、シーン JSON に入る
+    { P.applyPreset('直立'); P.setView('front'); const kp = () => P.openposeJSON().people[0].pose_keypoints_2d, W = P.openposeJSON().canvas_width;
+      const a = kp(); P.setPlace(0.25, 0, 1); const b2 = kp(); P.setPlace(0, 0, 0.6); const c2 = kp();
+      const len = k => Math.hypot(k[3] - (k[8*3] + k[11*3]) / 2, k[4] - (k[8*3+1] + k[11*3+1]) / 2);
+      out.place = Math.abs(b2[3] - a[3] - 0.25 * W) < 1 && Math.abs(b2[4] - a[4]) < 1 && Math.abs(len(c2) / len(a) - 0.6) < 0.01
+        && P.camera().view?.enabled === true && JSON.stringify(P.getCam().place) === '[0,0,0.6]';
+      P.setPlace(0, 0, 1); out.placeReset = !P.camera().view?.enabled; }
+    // カメラ: シーン JSON に入り、読み戻すと同じ視点・画角・サイズ・配置になるか
+    const cam0 = { pos: [1.2, 1.6, 3.1], target: [0.1, 0.95, 0], fov: 40, size: [1024, 1024], place: [0.1, -0.05, 1.2] };
     P.setCam(cam0); const sf = JSON.parse(JSON.stringify(P.sceneFile()));
     P.setCam({ pos: [0, 1, 5], target: [0, 1, 0], fov: 30, size: [832, 1216] });
     P.setCam(sf.cam); const c1 = P.getCam();
     out.camRoundtrip = JSON.stringify(c1) === JSON.stringify(cam0);
     out.camRender = (c => `${c.width}x${c.height}`)(P.renderImage('openpose'));
     out.camNotInUndo = !('cam' in P.getScene());
+    P.setCam({ pos: [0, 1, 5], target: [0, 1, 0], fov: 30, size: [832, 1216] }); out.camOldFile = JSON.stringify(P.getCam().place) === '[0,0,1]';   // place の無い古いファイルは配置なしに戻る
     P.setCam({ size: [832, 1216] });
     return out;
   });
