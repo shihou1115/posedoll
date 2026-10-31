@@ -17,6 +17,10 @@ src/skin.js        人体の見た目の肌メッシュ生成（距離場 → su
 src/template.html  HTML / CSS。__JSZIP__ と __BUNDLE__ の位置にスクリプトが差し込まれる
 src/build.py       ビルド（esbuild で app.js と three.js を1本にまとめ、template に埋め込む）
 src/smoke_test.js  自動の動作確認（Playwright）
+docs/scene-format.md         シーン JSON の仕様書（形式 2.1）。形式を変えたら必ず更新する
+docs/blender-verification.md Blender での形式検証の結果（v1.7）
+tools/blender_import.py      シーン JSON を Blender に読み込むスクリプト（Blender 内で実行）
+tests/blender/               形式の検証: make_cases.js（アプリで正解を作る）, cases/, run_check.py（Blender 内で比較）, results.json
 vendor/            three.js r160（three.module.min.js / OrbitControls.js / TransformControls.js）, jszip.min.js 3.10.1
 library/           利用者の保存庫（ポーズ1件 = JSON 1ファイル）。利用者のデータなので消さない・書き換えない
 ```
@@ -28,6 +32,8 @@ library/           利用者の保存庫（ポーズ1件 = JSON 1ファイル）
 3. `node src/smoke_test.js` で確認し、`errors` が空で全項目 true / 期待値になっていることを見る。
 4. 見た目が関わる変更はスクリーンショットでも確認する。
 5. バージョン番号（template.html の h1 内）と下の「変更履歴」を更新する。
+6. 骨格・関節の向き・カメラ・小道具の形を変えたら、`node tests/blender/make_cases.js` で正解を作り直し、
+   Blender（MCP）で `tests/blender/run_check.py` を exec して `results.json` の `pass` が true か確かめる。`docs/scene-format.md` も直す。
 
 ビルドと確認に esbuild・Playwright が要る。ユーザーの PC 側のシェルにはない（ネットも使えない）ので、
 **クラウド側の作業環境に src/ と vendor/ を持ってきてビルド・テストし、成果物だけ PC に書き戻す**。
@@ -75,6 +81,11 @@ library/           利用者の保存庫（ポーズ1件 = JSON 1ファイル）
 - 真横の警告（v1.6）… `sideness()` = 肩の線・腰の線と視線のなす角の sin の大きい方。`SIDE_WARN`（0.3 ≒ 17°）未満で出力タブに警告、書き出し枠も赤くなる。
 - 枠の中の配置（v1.6）… `place {x,y,s}`（枠の幅・高さに対する割合、右・上が＋、大きさ 0.4〜2.5）。画面のカメラにも `setViewOffset` で
   レンズシフト＋拡大をかけ（`applyPlace()`）、`exportCam()` も同じずれを合成するので、枠の見た目＝書き出し。遠近は変わらない。
+- 画角（v1.7）… 画角スライダーの値 `expFov` は**書き出し枠の縦の画角**。画面のカメラの画角は `syncFov()` が枠の高さから逆算する
+  （窓の大きさが変わっても書き出しの構図は変わらない）。`exportCam()` は pos/target/expFov/size/place だけで決まる（窓に依存しない）。
+  `viewPose()` の距離も `expFov` から。v1.6 以前の保存（`frameFov` の印なし）の fov は画面の画角なので `LEGACY_FOV_K`（0.84、tan で換算）で読み替える。
+- 形式の付録（v1.7）… `sceneFile()` がファイル保存時だけ `formatVersion`・`skeleton`（`skeletonOf()`）・`cam.lens`（`camLens()`）・`props[].parts`（`Prop.parts()`）を付ける。
+  アプリは読み込みでこれらを使わない。足裏の点は `FOOT_SOLE`（`kpFoot()` と `skeletonOf()` で共用）。
 - `renderImage(kind)` … 'doll' / 'openpose' / 'depth' / 'normal' / 'lineart' を書き出し枠（`exportCam()`）で描く。
 - 保存まわり … File System Access API。選んだフォルダのハンドルは IndexedDB（DB `posedoll`、ストア `kv`、キー `dir_lib` / `dir_out`）に記憶。
   未対応ブラウザ（Firefox）では保存庫は localStorage（`posedoll:lib`）。
@@ -100,10 +111,13 @@ library/           利用者の保存庫（ポーズ1件 = JSON 1ファイル）
 - デバッグ用 … `window.__pose`（smoke_test.js がこれを使う）。
 
 ### データ形式
-- シーン JSON: `{v:2, figures:[{name, pos, body, pose:{rot:{関節名:[x,y,z]度}, root:[x,y,z]}}], props:[{type,pos,rot,scl}], active, cam?:{pos,target,fov,size:[W,H]}}`。
+- 詳しい仕様は `docs/scene-format.md`（他のツール向けの約束事もここ）。
+- シーン JSON: `{format:'posedoll-scene', formatVersion:'2.1', v:2, figures:[{name, pos, body, pose:{rot:{関節名:[x,y,z]度}, root:[x,y,z]}}], props:[{type,pos,rot,scl}], active, cam?:{pos,target,fov,size:[W,H]}}`。
   `cam` はファイル保存時だけ付く（undo 履歴・自動保存の `posedoll:v2` には入れない）。v1.6 で `cam.place:[x,y,s]`（枠の中の配置）を追加。
   シーンや `posedoll:cam` に `place` が無ければ配置なしに戻す。保存庫の cam に無ければ今の配置のまま。
   `v` がない古い形式 `{rot, root, head}` も読める。
+  v1.7（形式 2.1）でファイル保存時に `figures[].skeleton`・`props[].parts`・`cam.lens` を追加（読み込みでは使わない）。
+  `cam.frameFov`（v1.7）は `getCam()` が常に付ける印で、**読み込みで使う**（無いと古い画角として `LEGACY_FOV_K` で読み替える）。
 - OpenPose JSON: `{people:[{pose_keypoints_2d(18×3), hand_left_keypoints_2d(21×3|null), hand_right_keypoints_2d, face_keypoints_2d(68×3|null), foot_keypoints_2d?(6×3)}], canvas_width, canvas_height}`。
   `foot_keypoints_2d` は足先を描くときだけ付く（描き方が 1点でも 6点で入れる）。
   座標は出力サイズのピクセル、見えない点は `[0,0,0]`。left/right は本人から見た左右。画像と同じ投影（kpBody/kpHand）。
@@ -119,6 +133,10 @@ library/           利用者の保存庫（ポーズ1件 = JSON 1ファイル）
 - 未対応の要望は requests/ フォルダにまとめてある。作業を始めるときに確認し、対応したらファイル末尾に対応内容と版を書き足すこと。
 
 ## 変更履歴
+- v1.7（2026-10）requests/2026-10-30 の要望（データ形式の Blender 検証）に対応。シーン JSON を形式 2.1 に（`skeleton`・`cam.lens`・`props[].parts`・`frameFov`）、
+  仕様書 `docs/scene-format.md`、`tools/blender_import.py`、検証 `tests/blender/`（4 ケース・695 点で最大 0.0008mm / 0.0005px）。
+  検証中に「書き出しの構図がブラウザの窓の大きさで変わる」問題が見つかったので、画角を書き出し枠基準（`expFov`）に変えて直した。
+  smoke_test に `skeleton`（skeleton からの組み直し）・`lens`・`propParts`・`formatTag`・`viewportFree` を追加。
 - v1.6（2026-10）requests/2026-10-29 の要望（歩行アニメ検証）に対応。真横に近い角度の警告、OpenPose の足先（BODY_25 式 3点 / Wan Animate 式 1点）と
   顔の点（DWPose の白い点 68）、書き出し枠の中の配置と大きさ（`cam.place`）。smoke_test に `sideWarn` `feetFace` `faceBack` `feetToe` `feetOff` `place` `placeReset` `camOldFile`。
 - v1.5（2026-10）言葉でポーズ。LLM 向け指示書（`src/llm_prompt.md` → `LLM_POSE.md`）のコピー／保存と、返事の JSON の貼り付け反映（`src/llmpose.js`）。

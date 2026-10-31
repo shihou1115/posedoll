@@ -1,4 +1,4 @@
-デッサン人形ポーザー v1.5（ローカル版）
+デッサン人形ポーザー v1.7（ローカル版）
 
 ■ 起動
   posedoll.html をダブルクリック（Chrome または Edge 推奨）。ネット接続は不要です。
@@ -13,7 +13,19 @@
   LLM_POSE.md    … LLM にポーズを書かせるための指示書（アプリの「指示書をコピー」と同じ内容）
   library\       … 保存庫（ポーズ1件 = JSON 1ファイル。コピーすればバックアップ・移行できます）
   src\           … 改修用のソース（app.js / skin.js / template.html / build.py）
+  docs\          … シーン JSON の仕様書（scene-format.md）と Blender での検証結果
+  tools\         … blender_import.py（保存したシーン JSON を Blender に読み込むスクリプト）
+  tests\         … 形式の検証用データ（開発用）
   vendor\        … 組み込み済みのライブラリ（three.js r160, JSZip 3.10.1：いずれも MIT ライセンス）
+
+■ v1.7 で変わったこと
+  ・出力タブの「画角」は、書き出し枠（書き出す画像）の縦の画角になりました。
+    これまではブラウザの窓の大きさで書き出しの構図が変わっていましたが、窓の大きさに関係なく同じ画像になります。
+    v1.6 以前に保存したシーンは近似で換算して開くため、構図がわずかに違うことがあります。
+  ・「シーンを JSON で保存」に骨格・レンズ・小道具の形が入るようになり、Blender などでも同じポーズとカメラを組み直せます。
+    Blender では Scripting タブで次の2行を実行（パスは自分の環境に合わせる）:
+      exec(open(r"C:\claude\posedoll\tools\blender_import.py", encoding="utf-8").read())
+      import_posedoll(r"C:\…\xxx_scene.json", new_scene=True)
 
 ■ v1.6 で増えたこと
   ・出力タブ：人形がほぼ真横を向いていると警告（OpenPose では体の向きが伝わりにくいため、真横から 20° ほど斜めがおすすめ）

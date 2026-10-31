@@ -361,7 +361,7 @@ class Figure{
   kpFoot(){
     const pts=[];
     for(const s of ['L','R']){ const sx=s==='L'?1:-1, m=this.footMesh[s];
-      for(const p of [[-0.42*sx,-0.55,0.86],[0.6*sx,-0.55,0.62],[0,-0.5,-0.86]]) pts.push(m.localToWorld(new THREE.Vector3(...p))); }
+      for(const p of FOOT_SOLE) pts.push(m.localToWorld(new THREE.Vector3(p[0]*sx,p[1],p[2]))); }
     return pts;
   }
   // 68 face points in the iBUG-300W order DWPose uses, placed on the head (headGroup space, unscaled). Hidden when facing away from the camera
@@ -379,6 +379,8 @@ class Figure{
   }
 }
 
+// sole points of the foot ellipsoid (unit-sphere coords, person's left; x mirrored on the right): big toe, small toe, heel
+const FOOT_SOLE=[[-0.42,-0.55,0.86],[0.6,-0.55,0.62],[0,-0.5,-0.86]], FOOT_NAMES=['bigtoe','smalltoe','heel'];
 // face template for kpFace (headGroup space; +X = person's left, so iBUG point 0 starts on the person's right)
 const FACE_TPL=(()=>{
   const sz=(x,y)=>0.005+0.098*Math.sqrt(Math.max(0,1-(x/0.088)**2-((y-0.11)/0.112)**2)), on=(x,y,k=1,dz=0)=>[x,y,sz(x,y)*k+dz], P=[];
@@ -445,6 +447,7 @@ class Prop{
   }
   getState(){ const o=this.obj, r=v=>Math.round(v*1000)/1000; return {type:this.type,pos:o.position.toArray().map(r),rot:[o.rotation.x,o.rotation.y,o.rotation.z].map(a=>Math.round(a*R2D*10)/10),scl:o.scale.toArray().map(r)}; }
   setState(s){ const o=this.obj; if(s.pos) o.position.fromArray(s.pos); if(s.rot) o.rotation.set(s.rot[0]*D2R,s.rot[1]*D2R,s.rot[2]*D2R); if(s.scl) o.scale.fromArray(s.scl); }
+  parts(){ const r=v=>Math.round(v*1e6)/1e6; return this.meshes.map(m=>({shape:m.geometry===CYL?'cylinder':'box',size:m.scale.toArray().map(r),pos:m.position.toArray().map(r)})); }   // unit box / unit cylinder (radius 1, height 1, axis Y) scaled by size
   dispose(){ propRoot.remove(this.obj); }
 }
 
@@ -792,7 +795,7 @@ document.querySelectorAll('[data-look]').forEach(b=>b.onclick=()=>setLook(b.data
 document.querySelectorAll('[data-look]').forEach(b=>b.classList.toggle('on',b.dataset.look===look));
 $('showFloor').addEventListener('change',e=>{ floor.visible=e.target.checked; lsSet('posedoll:floor',e.target.checked?'1':'0'); dirty=true; });
 $('showGrid').addEventListener('change',e=>{ grid.visible=e.target.checked; });
-$('fov').addEventListener('input',e=>{ camera.fov=+e.target.value; camera.updateProjectionMatrix(); $('of').textContent=e.target.value+'°'; dirty=true; saveCamLocal(); });
+$('fov').addEventListener('input',e=>{ expFov=+e.target.value; syncFov(); $('of').textContent=e.target.value+'°'; saveCamLocal(); });
 
 // reference image
 const refImg=$('refImg'); let refURL=null;
@@ -821,7 +824,7 @@ const VIEW_LABEL={front:'正面',q:'斜め',side:'横',back:'背面',high:'俯�
 const VIEW_FILE={front:'front',q:'quarter',side:'side',back:'back',high:'high',low:'low'};
 function viewPose(name){   // camera position / target that frames the active figure from a named view
   const [az,el]=VIEWS[name], h=wpos(active.J.hips), t=new THREE.Vector3(h.x,0.9*active.body.height,h.z);
-  const d=1.25*Math.max(1,active.body.height)/Math.tan(camera.fov*D2R/2);
+  const d=1.05*Math.max(1,active.body.height)/Math.tan(expFov*D2R/2);   // the figure fills about 85% of the frame height
   return {target:t,pos:new THREE.Vector3(t.x+d*Math.cos(el*D2R)*Math.sin(az*D2R),t.y+d*Math.sin(el*D2R),t.z+d*Math.cos(el*D2R)*Math.cos(az*D2R))};
 }
 function setView(name){
@@ -834,12 +837,14 @@ let camSaveT; orbit.addEventListener('change',()=>{ dirty=true; clearTimeout(cam
 // camera state (kept out of undo; saved in scene files, library items and localStorage 'posedoll:cam')
 function getCam(){
   const r=v=>Math.round(v*1000)/1000;
-  return {pos:camera.position.toArray().map(r),target:orbit.target.toArray().map(r),fov:Math.round(camera.fov),size:outSize(),place:[place.x,place.y,place.s]};
+  return {pos:camera.position.toArray().map(r),target:orbit.target.toArray().map(r),fov:expFov,frameFov:true,size:outSize(),place:[place.x,place.y,place.s]};
 }
 function setCam(c,withSize=true){
   if(!c||typeof c!=='object') return false;
   const ok=a=>Array.isArray(a)&&a.length===3&&a.every(Number.isFinite);
-  if(Number.isFinite(c.fov)){ const v=clamp(Math.round(c.fov),12,70); camera.fov=v; camera.updateProjectionMatrix(); $('fov').value=v; $('of').textContent=v+'°'; }
+  if(Number.isFinite(c.fov)){   // before v1.7 the fov was the screen camera's; the frame then showed about LEGACY_FOV_K of its height
+    const f=c.frameFov?c.fov:2*Math.atan(Math.tan(c.fov*D2R/2)*LEGACY_FOV_K)*R2D;
+    const v=clamp(Math.round(f),12,70); expFov=v; $('fov').value=v; $('of').textContent=v+'°'; syncFov(); }
   if(withSize&&Array.isArray(c.size)&&c.size.length===2&&c.size.every(Number.isFinite)){
     const [W,H]=c.size.map(v=>clamp(Math.round(v),64,4096)), opt=`${W}x${H}`;
     if([...$('sizeSel').options].some(o=>o.value===opt)){ $('sizeSel').value=opt; $('customRow').hidden=true; }
@@ -853,7 +858,36 @@ function setCam(c,withSize=true){
   camera.lookAt(orbit.target); orbit.update(); dirty=true; saveCamLocal(); return true;
 }
 function saveCamLocal(){ lsSet('posedoll:cam',JSON.stringify(getCam())); }
-const sceneFile=()=>({...getScene(),cam:getCam()});
+function sceneFile(){   // what 'save scene' writes: the scene plus what other tools need to rebuild it (v1.7; see docs/scene-format.md)
+  const s={format:'posedoll-scene',formatVersion:FORMAT_VERSION,...getScene(),cam:{...getCam(),lens:camLens()}};
+  s.figures.forEach((fs,i)=>{ fs.skeleton=skeletonOf(figures[i]); });
+  s.props.forEach((ps,i)=>{ ps.parts=props[i].parts(); });
+  return s;
+}
+// the exact export camera: vertical fov of the image, its aspect, and where the view axis lands (NDC, x right / y up). Independent of the window
+function camLens(){
+  const c=exportCam(), e=c.projectionMatrix.elements, [W,H]=outSize(), r=v=>Math.round(v*1e6)/1e6;
+  return {fovY:r(2*Math.atan(1/e[5])*R2D),aspect:r(e[5]/e[0]),center:[r(-e[8]),r(-e[9])],size:[W,H]};
+}
+// rest skeleton of one figure, enough to rebuild every joint and keypoint elsewhere (offsets already include the body proportions)
+function skeletonOf(f){
+  f.group.updateMatrixWorld(true);
+  const r=v=>Math.round(v*1e6)/1e6, v3=v=>v.toArray().map(r), deg=e=>[e.x,e.y,e.z].map(a=>r(a*R2D));
+  const name=new Map([[f.group,null],[f.headGroup,'headGroup']]);
+  for(const n of ALL_JOINTS) name.set(f.J[n],n);
+  for(const s of ['L','R']) name.set(f.J[fj(s,'thumb',1)].parent,`f${s}_thumbBase`);
+  const nodes={};
+  f.group.traverse(o=>{ if(o===f.group||!name.has(o)) return;   // traverse visits parents before children
+    const n=name.get(o), node={parent:name.get(o.parent),offset:v3(o.position)};
+    if(ALL_JOINTS.includes(n)) node.joint=true;
+    else { node.rest=deg(o.rotation); if(o.scale.x!==1) node.scale=r(o.scale.x); }
+    nodes[n]=node; });
+  const marks={};
+  for(const [k,o] of Object.entries(f.marks)) marks[k]={parent:name.get(o.parent),offset:v3(o.position)};
+  for(const s of ['L','R']){ const m=f.footMesh[s], sx=s==='L'?1:-1;
+    FOOT_SOLE.forEach((u,i)=>{ marks[`${s}_${FOOT_NAMES[i]}`]={parent:'ankle'+s,offset:[0,1,2].map(j=>r(m.position.getComponent(j)+m.scale.getComponent(j)*u[j]*(j===0?sx:1)))}; }); }
+  return {units:'m',up:'+Y',front:'+Z',left:'+X',euler:'XZY',angles:'deg',nodes,marks,face:{parent:'headGroup',points:FACE_TPL.map(p=>p.map(r))}};
+}
 
 // export framing
 function outSize(){
@@ -871,19 +905,31 @@ function layoutFrame(){
   for(const el of [$('frame'),refImg]) Object.assign(el.style,{left:r.x+'px',top:r.y+'px',width:r.w+'px',height:r.h+'px'});
   $('frameLabel').textContent=W+'×'+H;
   const pc=$('opPreview'), pw=Math.round(Math.min(240,300*W/H)); pc.width=pw; pc.height=Math.round(pw*H/W); dirty=true;
-  applyPlace();
+  syncFov(); applyPlace();
 }
 $('sizeSel').addEventListener('change',()=>{ $('customRow').hidden=$('sizeSel').value!=='custom'; layoutFrame(); saveCamLocal(); });
 ['cw','ch'].forEach(id=>$(id).addEventListener('input',()=>{ layoutFrame(); saveCamLocal(); }));
-function exportCam(src=camera){ const r=frameRect(), o=placeOffset(r), c=src.clone(); c.aspect=vw/vh; c.setViewOffset(vw*place.s,vh*place.s,o.x+r.x,o.y+r.y,r.w,r.h); c.updateProjectionMatrix(); c.updateMatrixWorld(); return c; }
+// the export camera depends only on what a scene file saves (pos / target / fov / size / place), never on the window (v1.7)
+function exportCam(src=camera){
+  const [W,H]=outSize(), s=place.s, c=src.clone(); c.fov=expFov; c.aspect=W/H; c.clearViewOffset();
+  if(place.x||place.y||s!==1) c.setViewOffset(W*s,H*s,(W*s-W)/2-place.x*W,(H*s-H)/2+place.y*H,W,H);
+  c.updateProjectionMatrix(); c.updateMatrixWorld(); return c;
+}
 
 // placement inside the export frame (v1.6): a lens shift / zoom about the frame centre, applied to the screen camera too so the frame
 // shows what is exported. x, y = fraction of the frame (right / up are +), s = size. Saved with the camera (cam.place)
 const place={x:0,y:0,s:1};
-function placeOffset(r=frameRect()){ const cx=r.x+r.w/2, cy=r.y+r.h/2, s=place.s; return {x:cx*s-cx-place.x*r.w,y:cy*s-cy+place.y*r.h}; }
+// field of view (v1.7): the slider sets the vertical fov of the export frame itself, and the screen camera is widened to show the margin
+// around it. Before v1.7 the slider set the screen camera, so the same file framed differently in a different window size
+let expFov=30;
+const LEGACY_FOV_K=0.84;   // pre-1.7 files: share of the screen camera's height the frame usually covered (portrait frame, common windows)
+const FORMAT_VERSION='2.1';
+function syncFov(){ const r=frameRect(); camera.fov=2*Math.atan(Math.tan(expFov*D2R/2)*vh/r.h)*R2D; camera.updateProjectionMatrix(); dirty=true; }
+function placeOffset(r=frameRect()){   // screen camera: the view axis sits at the frame centre (moved by the placement), magnified by place.s
+  const cx=r.x+r.w/2, cy=r.y+r.h/2, s=place.s; return {x:vw*s/2-(cx+place.x*r.w),y:vh*s/2-(cy-place.y*r.h)};
+}
 function applyPlace(){
-  if(!place.x&&!place.y&&place.s===1) camera.clearViewOffset();
-  else { const o=placeOffset(); camera.setViewOffset(vw*place.s,vh*place.s,o.x,o.y,vw,vh); }
+  const o=placeOffset(); camera.setViewOffset(vw*place.s,vh*place.s,o.x,o.y,vw,vh);   // always on: the frame is not centred in the window
   camera.updateProjectionMatrix(); dirty=true;
 }
 function setPlace(x,y,s){
@@ -1321,5 +1367,5 @@ resize(); setView('front');
 showTab(lsGet('posedoll:tab')||'pose');
 renderLib(); initLib();
 loop();
-window.__pose={THREE,applyLLM,llmPrompt,solvePole,solveElbow,setLook,getLook:()=>look,camera:()=>camera,figures:()=>figures,active:()=>active,getScene,setScene,getCam,setCam,batchZip,getSel:()=>sel,sceneFile,openposeJSON,applyPreset,renderImage,select,setView,solveLimb,mirrorPose,limitsFor,clampJoint,addProp,setFinger,setSpread,commit,
+window.__pose={THREE,camLens,skeletonOf,exportCam:()=>exportCam(),getExpFov:()=>expFov,applyLLM,llmPrompt,solvePole,solveElbow,setLook,getLook:()=>look,camera:()=>camera,figures:()=>figures,active:()=>active,getScene,setScene,getCam,setCam,batchZip,getSel:()=>sel,sceneFile,openposeJSON,applyPreset,renderImage,select,setView,solveLimb,mirrorPose,limitsFor,clampJoint,addProp,setFinger,setSpread,commit,
   setPlace,sideness,FACE_TPL,setIK:v=>{ ikOn=v; syncHandles(); }, setLimits:v=>{ limitsOn=v; }};
